@@ -1,0 +1,128 @@
+import json
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+
+
+class BridgeError(Exception):
+    pass
+
+
+class BridgeClient:
+    def __init__(self, config):
+        self.config = config
+        self.base = config.bridge_base_url.rstrip("/")
+        if not self.base.startswith("https://"):
+            raise BridgeError("BRIDGE_BASE_URL must use HTTPS and include the dataset ID")
+        if not config.bridge_key:
+            raise BridgeError("BRIDGE_API_KEY is required")
+        self.properties = {}
+        self.members = {}
+        self.offices = {}
+
+    def _get(self, url):
+        if not url.startswith(self.base + "/"):
+            raise BridgeError("Bridge pagination URL left the configured dataset")
+        headers = {"Accept": "application/json"}
+        if self.config.bridge_auth_mode == "bearer":
+            headers["Authorization"] = "Bearer " + self.config.bridge_key
+        else:
+            parts = urllib.parse.urlsplit(url)
+            query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+            query.append(("access_token", self.config.bridge_key))
+            url = urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment))
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
+                    return response.read()
+            except urllib.error.HTTPError as exc:
+                if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                    raise BridgeError(f"Bridge returned HTTP {exc.code}") from None
+            except (urllib.error.URLError, TimeoutError):
+                if attempt == 2:
+                    raise BridgeError("Bridge request failed after retries") from None
+            time.sleep(2 ** attempt)
+
+    def inspect_metadata(self):
+        root = ET.fromstring(self._get(self.base + "/$metadata"))
+        namespace = {"e": "http://docs.oasis-open.org/odata/ns/edm"}
+        result = {}
+        for entity in root.findall(".//e:EntityType", namespace):
+            name = entity.attrib.get("Name")
+            if name in ("Property", "Member", "Office"):
+                result[name] = {p.attrib["Name"]: p.attrib.get("Type", "") for p in entity.findall("e:Property", namespace)}
+        for resource, mapping in self.config.field_map.items():
+            if resource not in result:
+                raise BridgeError(f"Bridge metadata has no {resource} resource")
+            missing = [field for field in mapping.values() if field not in result[resource]]
+            if missing:
+                raise BridgeError(f"{resource} mapping has fields absent from Bridge metadata: {', '.join(missing)}")
+        entry_field = self.config.field_map["Property"]["entry_timestamp"]
+        if result["Property"][entry_field] != "Edm.DateTimeOffset":
+            raise BridgeError(f"{entry_field} is not an Edm.DateTimeOffset field")
+        return result
+
+    def _collection(self, resource, params):
+        url = self.base + "/" + resource + "?" + urllib.parse.urlencode(params)
+        while url:
+            try:
+                data = json.loads(self._get(url))
+            except (ValueError, KeyError):
+                raise BridgeError("Bridge returned invalid JSON") from None
+            for row in data.get("value", []):
+                yield row
+            next_url = data.get("@odata.nextLink")
+            url = urllib.parse.urljoin(self.base + "/", next_url) if next_url else None
+
+    def _one(self, resource, key, cache):
+        if not key:
+            return {}
+        if key not in cache:
+            mapping = self.config.field_map[resource]
+            safe_key = str(key).replace("'", "''")
+            params = {"$filter": f"{mapping['key']} eq '{safe_key}'", "$select": ",".join(dict.fromkeys(mapping.values())), "$top": 1}
+            cache[key] = next(self._collection(resource, params), {})
+        return cache[key]
+
+    def active_new_listings(self, start, end):
+        self.inspect_metadata()
+        fields = self.config.field_map["Property"]
+        start_text = start.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        end_text = end.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        params = {
+            "$filter": f"{fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
+            "$select": ",".join(dict.fromkeys(fields.values())),
+            "$top": 200,
+            "$orderby": fields["entry_timestamp"] + " asc",
+        }
+        for row in self._collection("Property", params):
+            listing = {name: row.get(field) for name, field in fields.items()}
+            if not listing["listing_id"] or not listing["entry_timestamp"]:
+                raise BridgeError("A Bridge listing is missing its ID or entry timestamp")
+            entered = datetime.fromisoformat(str(listing["entry_timestamp"]).replace("Z", "+00:00"))
+            if entered.tzinfo is None:
+                raise BridgeError("Bridge entry timestamp has no timezone")
+            if listing["status"] != "Active" or not start <= entered < end:
+                continue
+            office = self._one("Office", listing.get("office_id"), self.offices)
+            office_map = self.config.field_map["Office"]
+            member_map = self.config.field_map["Member"]
+            agent = self._one("Member", listing.get("agent_id"), self.members)
+            broker_id = office.get(office_map["broker_id"])
+            broker = self._one("Member", broker_id, self.members)
+            listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])
+            listing["agent_email"] = listing.get("agent_email") or agent.get(member_map["email"])
+            listing["brokerage_name"] = listing.get("office_name") or office.get(office_map["name"])
+            listing["brokerage_id"] = listing.pop("office_id", None)
+            listing.pop("office_name", None)
+            listing["brokerage_email"] = office.get(office_map["email"])
+            listing["broker_id"] = broker_id
+            listing["broker_name"] = broker.get(member_map["name"])
+            listing["broker_first_name"] = broker.get(member_map["first_name"])
+            listing["broker_email"] = broker.get(member_map["email"])
+            listing["mls_number"] = str(listing["mls_number"] or listing["listing_id"])
+            listing["address"] = listing["address"] or "Address unavailable"
+            yield listing

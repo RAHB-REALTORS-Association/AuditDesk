@@ -1,0 +1,26 @@
+{
+  "Property": {
+    "listing_id": "ListingKey",
+    "mls_number": "ListingId",
+    "status": "StandardStatus",
+    "entry_timestamp": "OriginalEntryTimestamp",
+    "address": "UnparsedAddress",
+    "agent_id": "ListAgentKey",
+    "agent_name": "ListAgentFullName",
+    "agent_email": "ListAgentEmail",
+    "office_id": "ListOfficeKey",
+    "office_name": "ListOfficeName"
+  },
+  "Member": {
+    "key": "MemberKey",
+    "name": "MemberFullName",
+    "first_name": "MemberFirstName",
+    "email": "MemberEmail"
+  },
+  "Office": {
+    "key": "OfficeKey",
+    "name": "OfficeName",
+    "email": "OfficeEmail",
+    "broker_id": "OfficeBrokerKey"
+  }
+}
