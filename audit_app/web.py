@@ -7,9 +7,10 @@ import logging
 import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
+from .assignment import add_reviewer, assign_reviewer, rename_reviewer, set_reviewer_active
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients
 from .job import deliver_audit
@@ -30,7 +31,7 @@ def local_time(value, zone):
 
 
 def badge(status):
-    kind = "good" if status in {"email_sent", "completed", "passed"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors"} else "neutral"
+    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors"} else "neutral"
     label = status.replace("_", " ").title()
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
@@ -139,6 +140,25 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
         <button type="submit" name="action" value="preview">Preview failed notice</button>{preview_html}</form></div></section>'''
 
 
+def reviewers_view(config, reviewers, error=""):
+    rows = ""
+    for person in reviewers:
+        reviewer_id = person["id"]
+        action = "deactivate" if person["active"] else "activate"
+        rows += f'''<tr><td><form method="post" action="/reviewers/{reviewer_id}" class="reviewer-form">
+            <input type="hidden" name="token" value="{retry_token(config, f"reviewer:{reviewer_id}")}">
+            <input name="name" aria-label="Name" maxlength="80" required value="{html.escape(person["name"], quote=True)}">
+            <button name="action" value="rename">Save name</button>
+            <button name="action" value="{action}">{"Remove from list" if person["active"] else "Restore to list"}</button>
+            </form></td><td>{"Available" if person["active"] else "Inactive"}</td></tr>'''
+    return f'''<section class="panel roster-panel"><div class="panel-head"><div><h2>Audit team</h2><p>Names available in the audit assignment dropdown</p></div></div>
+        <div class="roster-content">{'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
+        <form method="post" action="/reviewers" class="reviewer-form"><input type="hidden" name="token" value="{retry_token(config, "reviewers")}">
+        <input name="name" aria-label="New team member name" maxlength="80" required placeholder="Team member name"><button class="primary-button" type="submit">Add name</button></form>
+        <p>Removing a name hides it from new assignments. Existing audits keep their assigned name.</p>
+        <table class="roster-table"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>{rows or '<tr><td colspan="2">No names yet. Add one above to begin assigning audits.</td></tr>'}</tbody></table></div></section>'''
+
+
 def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False):
     with connect(config.database_path) as db:
         counts = {
@@ -147,12 +167,15 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             "sent": db.execute("SELECT count(*) FROM audits WHERE email_status='email_sent'").fetchone()[0],
             "failed": db.execute("SELECT count(*) FROM audits WHERE email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
-        audits = db.execute("""SELECT a.*, l.mls_number, l.address, l.agent_email FROM audits a
-            JOIN listings l ON l.id=a.listing_id ORDER BY a.selected_at DESC LIMIT 200""").fetchall()
+        audits = db.execute("""SELECT a.*, l.mls_number, l.address, l.agent_email,
+            ar.name AS reviewer_name, ar.active AS reviewer_active FROM audits a
+            JOIN listings l ON l.id=a.listing_id LEFT JOIN audit_reviewers ar ON ar.id=a.reviewer_id
+            ORDER BY a.selected_at DESC LIMIT 200""").fetchall()
+        reviewers = db.execute("SELECT * FROM audit_reviewers ORDER BY active DESC, name COLLATE NOCASE").fetchall()
         listings = db.execute("SELECT * FROM listings ORDER BY first_processed_at DESC LIMIT 200").fetchall()
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
-    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("simulation", "Simulation")))
+    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("reviewers", "Audit team"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("simulation", "Simulation")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -175,6 +198,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     elif tab == "outcome":
         title, subtitle = "Record audit result", "Mark this audit passed, or describe issues and review its failure notice."
         content = outcome_view(config, audit_id, form_values or "", error, preview_outcome)
+    elif tab == "reviewers":
+        title, subtitle = "Audit team", "Manage the names available when assigning an audit."
+        content = reviewers_view(config, reviewers, error)
     elif tab == "listings":
         headings = "<th>MLS / Property</th><th>Entered</th><th>Brokerage</th><th>Listing agent</th><th>Processing status</th>"
         rows = "".join(f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
@@ -184,7 +210,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         rows = "".join(f'<tr><td>{esc(local_time(r["started_at"], config.timezone))}</td><td>{badge(r["status"])}</td><td>{r["fetched_count"]}</td><td>{r["new_count"]}</td><td>{r["selected_count"]}</td><td class="error">{esc(r["error"])}</td></tr>' for r in runs)
         title, subtitle = "Scheduled runs", "Recent daily jobs and any errors they encountered."
     else:
-        headings = "<th>MLS / Property</th><th>Selected</th><th>Brokerage / Broker</th><th>Agent</th><th>Intended recipients</th><th>Actual recipient</th><th>Mode / Status</th><th>History</th><th>Outcome</th><th></th>"
+        headings = "<th>MLS / Property</th><th>Selected</th><th>Brokerage / Broker</th><th>Agent</th><th>Intended recipients</th><th>Actual recipient</th><th>Mode / Status</th><th>Work status</th><th>Assigned to</th><th>History</th><th>Outcome</th><th></th>"
         rows = ""
         for r in audits:
             retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" else ""
@@ -193,11 +219,17 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 failure_token = retry_token(config, "failure:" + str(r["id"]))
                 retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}"><button type="submit">Send failed notice</button></form>'
             mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else '<span class="mode-prod">LIVE</span>'
-            rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
+            work_status = "Completed" if r["outcome"] else "In progress" if r["reviewer_id"] else "Not started"
+            options = '<option value="">Unassigned</option>' + "".join(
+                f'<option value="{person["id"]}" {"selected" if person["id"] == r["reviewer_id"] else ""}>{esc(person["name"])}{" (inactive)" if not person["active"] else ""}</option>'
+                for person in reviewers if person["active"] or person["id"] == r["reviewer_id"])
+            assignment_token = retry_token(config, f'assignment:{r["id"]}')
+            assignment = f'<form method="post" action="/assignment/{r["id"]}" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><select name="reviewer_id" aria-label="Assign MLS {esc(r["mls_number"])}">{options}</select><button type="submit">Save</button></form>'
+            rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(r["reviewer_name"]) if r["reviewer_name"] else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation"}:
+    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers"}:
         if not rows:
-            rows = f'<tr><td colspan="10" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
+            rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
 <body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
@@ -258,7 +290,7 @@ def serve(config):
             elif path.path == "/":
                 query = parse_qs(path.query)
                 tab = query.get("tab", ["audits"])[0]
-                if tab not in {"audits", "listings", "runs", "template", "failure_template", "outcome", "simulation"}:
+                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation"}:
                     tab = "audits"
                 audit_id = query.get("id", [""])[0]
                 if tab == "outcome" and not audit_id.isdigit():
@@ -283,6 +315,67 @@ def serve(config):
             host = self.headers.get("Host")
             if origin and urlparse(origin).netloc != host:
                 self.send_error(403)
+                return
+            if self.path == "/reviewers" or self.path.startswith("/reviewers/") or self.path.startswith("/assignment/"):
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 2048:
+                    self.send_error(413)
+                    return
+                try:
+                    form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
+                except UnicodeDecodeError:
+                    self.send_error(400)
+                    return
+                if self.path == "/reviewers":
+                    token_key = "reviewers"
+                    item_id = None
+                else:
+                    prefix, _, item = self.path.rpartition("/")
+                    if not item.isdigit() or prefix not in {"/reviewers", "/assignment"}:
+                        self.send_error(404)
+                        return
+                    item_id = int(item)
+                    token_key = ("reviewer:" if prefix == "/reviewers" else "assignment:") + item
+                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, token_key)):
+                    self.send_error(403)
+                    return
+                tab = "audits" if self.path.startswith("/assignment/") else "reviewers"
+                try:
+                    if self.path == "/reviewers":
+                        add_reviewer(config, form.get("name", [""])[0])
+                        notice = "Name added to the audit team."
+                    elif tab == "reviewers":
+                        action = form.get("action", [""])[0]
+                        if action == "rename":
+                            rename_reviewer(config, item_id, form.get("name", [""])[0])
+                            notice = "Name updated."
+                        elif action in {"activate", "deactivate"}:
+                            set_reviewer_active(config, item_id, action == "activate")
+                            notice = "Audit team list updated."
+                        else:
+                            self.send_error(400)
+                            return
+                    else:
+                        value = form.get("reviewer_id", [""])[0]
+                        if value and not value.isdigit():
+                            raise ValueError("Choose a name from the list.")
+                        assign_reviewer(config, item_id, int(value) if value else None)
+                        notice = "Audit assignment updated."
+                except ValueError as exc:
+                    if tab == "reviewers":
+                        page = render(config, tab, error=str(exc)).encode()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html; charset=utf-8")
+                        self.send_header("Cache-Control", "no-store")
+                        self.send_header("Content-Length", str(len(page)))
+                        self.end_headers()
+                        self.wfile.write(page)
+                        return
+                    notice = str(exc)
+                self.send_response(303)
+                self.send_header("Location", "/?tab=" + tab + "&notice=" + quote(notice))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             if self.path in {"/template", "/failure-template"}:
                 failure = self.path == "/failure-template"

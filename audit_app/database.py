@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS audits (
   failure_last_error TEXT,
   failure_actual_recipients TEXT
 );
+CREATE TABLE IF NOT EXISTS audit_reviewers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS email_attempts (
   id INTEGER PRIMARY KEY,
   audit_id INTEGER NOT NULL REFERENCES audits(id),
@@ -128,4 +135,6 @@ def init_db(path):
                      "failure_message_id", "failure_last_error", "failure_actual_recipients"):
             if name not in audit_columns:
                 db.execute(f"ALTER TABLE audits ADD COLUMN {name} TEXT")
+        if "reviewer_id" not in audit_columns:
+            db.execute("ALTER TABLE audits ADD COLUMN reviewer_id INTEGER REFERENCES audit_reviewers(id)")
         db.commit()

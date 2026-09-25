@@ -30,6 +30,10 @@ After the original request email is accepted, open **Record result** on its Audi
 
 Edit the follow-up wording under **Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit history without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
 
+## Track who is working on an audit
+
+Open **Audit team** to add names, correct a name, or remove a name from future assignments. Removing a name keeps it on audits already assigned to that person; it can be restored later. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The staff login is shared, so the selected name is a manual assignment rather than an authenticated user identity.
+
 ## Simulate a full cycle
 
 Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. This uses synthetic listings and a temporary database. It demonstrates the 24-hour and Active filters, brokerage cooldown, audit creation, test-mode recipient substitution, a simulated SendGrid failure, idempotent second run, and successful manual retry. It does not call Bridge or SendGrid and does not change the real audit history.
