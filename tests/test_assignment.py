@@ -3,7 +3,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from audit_app.assignment import add_reviewer, assign_reviewer, rename_reviewer, set_reviewer_active
+from audit_app.assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
 from audit_app.config import load_config
 from audit_app.database import connect, init_db
 from audit_app.web import render
@@ -63,6 +63,47 @@ class AssignmentTests(unittest.TestCase):
         self.assertIn('Alex Smith', page)
         with self.assertRaisesRegex(ValueError, "active name"):
             assign_reviewer(self.config, 1, 999)
+
+    def test_delete_removes_name_but_keeps_audit_context(self):
+        add_reviewer(self.config, "Jordan Lee")
+        with connect(self.config.database_path) as db:
+            reviewer_id = db.execute("SELECT id FROM audit_reviewers").fetchone()[0]
+        assign_reviewer(self.config, 1, reviewer_id)
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE audits SET reviewer_name_snapshot=NULL WHERE id=1")
+            db.commit()
+        init_db(self.config.database_path)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT reviewer_name_snapshot FROM audits WHERE id=1").fetchone()[0], "Jordan Lee")
+        self.assertIn('value="delete"', render(self.config, "reviewers"))
+
+        delete_reviewer(self.config, reviewer_id)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM audit_reviewers").fetchone()[0], 0)
+            audit = db.execute("SELECT reviewer_id,reviewer_name_snapshot FROM audits WHERE id=1").fetchone()
+            self.assertEqual(tuple(audit), (None, "Jordan Lee"))
+        page = render(self.config)
+        self.assertIn("Needs Reassignment", page)
+        self.assertIn("Previously assigned: Jordan Lee", page)
+        add_reviewer(self.config, "Jordan Lee")
+        with connect(self.config.database_path) as db:
+            replacement_id = db.execute("SELECT id FROM audit_reviewers").fetchone()[0]
+        assign_reviewer(self.config, 1, replacement_id)
+        self.assertIn("In Progress", render(self.config))
+        self.assertNotIn("Needs Reassignment", render(self.config))
+
+    def test_delete_keeps_completed_audit_assignee_name(self):
+        add_reviewer(self.config, "Alex Smith")
+        with connect(self.config.database_path) as db:
+            reviewer_id = db.execute("SELECT id FROM audit_reviewers").fetchone()[0]
+        assign_reviewer(self.config, 1, reviewer_id)
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE audits SET outcome='passed' WHERE id=1")
+            db.commit()
+        delete_reviewer(self.config, reviewer_id)
+        page = render(self.config)
+        self.assertIn("Completed", page)
+        self.assertIn("Previously assigned: Alex Smith", page)
 
 
 if __name__ == "__main__":

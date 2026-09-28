@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS audits (
   failure_email_sent_at TEXT,
   failure_message_id TEXT,
   failure_last_error TEXT,
-  failure_actual_recipients TEXT
+  failure_actual_recipients TEXT,
+  reviewer_name_snapshot TEXT
 );
 CREATE TABLE IF NOT EXISTS audit_reviewers (
   id INTEGER PRIMARY KEY,
@@ -142,4 +143,9 @@ def init_db(path):
                 db.execute(f"ALTER TABLE audits ADD COLUMN {name} TEXT")
         if "reviewer_id" not in audit_columns:
             db.execute("ALTER TABLE audits ADD COLUMN reviewer_id INTEGER REFERENCES audit_reviewers(id)")
+        if "reviewer_name_snapshot" not in audit_columns:
+            db.execute("ALTER TABLE audits ADD COLUMN reviewer_name_snapshot TEXT")
+        db.execute("""UPDATE audits SET reviewer_name_snapshot=(
+            SELECT name FROM audit_reviewers WHERE id=audits.reviewer_id)
+            WHERE reviewer_id IS NOT NULL AND reviewer_name_snapshot IS NULL""")
         db.commit()

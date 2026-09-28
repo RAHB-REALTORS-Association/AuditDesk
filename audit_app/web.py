@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
-from .assignment import add_reviewer, assign_reviewer, rename_reviewer, set_reviewer_active
+from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients
 from .job import deliver_audit
@@ -32,7 +32,7 @@ def local_time(value, zone):
 
 
 def badge(status):
-    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors"} else "neutral"
+    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment"} else "neutral"
     label = status.replace("_", " ").title()
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
@@ -151,12 +151,13 @@ def reviewers_view(config, reviewers, error=""):
             <input name="name" aria-label="Name" maxlength="80" required value="{html.escape(person["name"], quote=True)}">
             <button name="action" value="rename">Save name</button>
             <button name="action" value="{action}">{"Remove from list" if person["active"] else "Restore to list"}</button>
+            <button name="action" value="delete" class="delete-button" formnovalidate onclick="return confirm('Delete this team member? Their unfinished audits will need reassignment.');">Delete</button>
             </form></td><td>{"Available" if person["active"] else "Inactive"}</td></tr>'''
     return f'''<section class="panel roster-panel"><div class="panel-head"><div><h2>Audit team</h2><p>Names available in the audit assignment dropdown</p></div></div>
         <div class="roster-content">{'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
         <form method="post" action="/reviewers" class="reviewer-form"><input type="hidden" name="token" value="{retry_token(config, "reviewers")}">
         <input name="name" aria-label="New team member name" maxlength="80" required placeholder="Team member name"><button class="primary-button" type="submit">Add name</button></form>
-        <p>Removing a name hides it from new assignments. Existing audits keep their assigned name.</p>
+        <p>Remove from list hides a name from new assignments and can be undone. Delete removes the roster entry; unfinished audits assigned to that person will need reassignment. The former name remains visible on those audit records.</p>
         <table class="roster-table"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>{rows or '<tr><td colspan="2">No names yet. Add one above to begin assigning audits.</td></tr>'}</tbody></table></div></section>'''
 
 
@@ -183,7 +184,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             "failed": db.execute("SELECT count(*) FROM audits WHERE email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
         audits = db.execute("""SELECT a.*, l.mls_number, l.address, l.agent_email,
-            ar.name AS reviewer_name, ar.active AS reviewer_active FROM audits a
+            COALESCE(ar.name,a.reviewer_name_snapshot) AS reviewer_name, ar.active AS reviewer_active FROM audits a
             JOIN listings l ON l.id=a.listing_id LEFT JOIN audit_reviewers ar ON ar.id=a.reviewer_id
             ORDER BY a.selected_at DESC LIMIT 200""").fetchall()
         reviewers = db.execute("SELECT * FROM audit_reviewers ORDER BY active DESC, name COLLATE NOCASE").fetchall()
@@ -238,13 +239,15 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 failure_token = retry_token(config, "failure:" + str(r["id"]))
                 retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}"><button type="submit">Send failed notice</button></form>'
             mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else '<span class="mode-prod">LIVE</span>'
-            work_status = "Completed" if r["outcome"] else "In progress" if r["reviewer_id"] else "Not started"
+            work_status = ("Completed" if r["outcome"] else "In progress" if r["reviewer_id"]
+                           else "Needs reassignment" if r["reviewer_name_snapshot"] else "Not started")
             options = '<option value="">Unassigned</option>' + "".join(
                 f'<option value="{person["id"]}" {"selected" if person["id"] == r["reviewer_id"] else ""}>{esc(person["name"])}{" (inactive)" if not person["active"] else ""}</option>'
                 for person in reviewers if person["active"] or person["id"] == r["reviewer_id"])
             assignment_token = retry_token(config, f'assignment:{r["id"]}')
             assignment = f'<form method="post" action="/assignment/{r["id"]}" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><select name="reviewer_id" aria-label="Assign MLS {esc(r["mls_number"])}">{options}</select><button type="submit">Save</button></form>'
-            rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(r["reviewer_name"]) if r["reviewer_name"] else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
+            reviewer_label = ("Previously assigned: " if not r["reviewer_id"] and r["reviewer_name_snapshot"] else "") + (r["reviewer_name"] or "")
+            rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
     if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin"}:
         if not rows:
@@ -401,6 +404,9 @@ def serve(config):
                         elif action in {"activate", "deactivate"}:
                             set_reviewer_active(config, item_id, action == "activate")
                             notice = "Audit team list updated."
+                        elif action == "delete":
+                            delete_reviewer(config, item_id)
+                            notice = "Name deleted. Any affected open audits need reassignment."
                         else:
                             self.send_error(400)
                             return

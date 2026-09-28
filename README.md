@@ -32,7 +32,7 @@ Edit the follow-up wording under **Admin → Failed-audit email**. Its subject a
 
 ## Track who is working on an audit
 
-Open **Audit team** to add names, correct a name, or remove a name from future assignments. Removing a name keeps it on audits already assigned to that person; it can be restored later. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The staff login is shared, so the selected name is a manual assignment rather than an authenticated user identity.
+Open **Audit team** to add names, correct a name, remove a name from future assignments, or delete its roster entry. **Remove from list** can be undone. **Delete** removes the name from the roster and frees it for reuse; an unfinished audit assigned to that person shows **Needs reassignment** and retains the former name for context. Completed audits keep their result and former assignee name. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The staff login is shared, so the selected name is a manual assignment rather than an authenticated user identity.
 
 ## Change the audit selection percentage
 
