@@ -1,6 +1,5 @@
 """Branded, paginated PDF for the brokerage audit statistics view."""
 
-from collections import Counter
 from datetime import datetime
 from html import escape
 from io import BytesIO
@@ -74,7 +73,7 @@ def build_brokerage_pdf(report):
     coverage = (f'Available app records begin {report["first_recorded"]:%b %d, %Y}. Earlier dates in this selected period have no app history.'
                 if report["first_recorded"] and report["first_recorded"] > report["start"] else
                 "The selected period is covered by available app history.")
-    story = [Paragraph("Audit selection by brokerage office", heading),
+    story = [Paragraph("Audit selection by brokerage", heading),
              Paragraph("Unique new Active listings first processed by MLS Audit Desk during the selected period.", subtitle),
              Spacer(1, 14)]
     card_table = Table([[Paragraph(label, card_label) for label, _ in cards],
@@ -90,18 +89,17 @@ def build_brokerage_pdf(report):
     story.extend([card_table, Spacer(1, 10), Paragraph(coverage +
                   f' {report["completed"]:,} of {report["audited"]:,} selected audits have a recorded result. Includes manual test runs.', note),
                   Spacer(1, 16), Paragraph("Brokerage detail", heading),
-                  Paragraph("Ordered by listing volume. Each Bridge office ID is counted separately.", subtitle),
+                  Paragraph("Ordered by listing volume. Branches with the same brokerage name are combined.", subtitle),
                   Spacer(1, 10)])
 
-    name_counts = Counter(row["name"].casefold() for row in report["rows"])
     data = [[Paragraph("BROKERAGE", cell_head), Paragraph("LISTINGS", cell_head_right),
              Paragraph("AUDITED", cell_head_right), Paragraph("AUDIT %", cell_head_right),
              Paragraph("PASSED", cell_head_right), Paragraph("PASS RATE", cell_head_right),
              Paragraph("FAILED", cell_head_right), Paragraph("FAIL RATE", cell_head_right)]]
     for row in report["rows"]:
         name = escape(row["name"])
-        if name_counts[row["name"].casefold()] > 1 and row["office_id"]:
-            name += f'<br/><font size="7" color="#637589">Office ID: {escape(row["office_id"])}</font>'
+        if row["branch_count"] > 1:
+            name += f'<br/><font size="7" color="#637589">{row["branch_count"]} branches combined</font>'
         data.append([Paragraph(name, cell), Paragraph(f'{row["listings"]:,}', cell_right),
                      Paragraph(f'{row["audited"]:,}', cell_right), Paragraph(rate_text(row["percentage"]), cell_right),
                      Paragraph(f'{row["passed"]:,}', cell_right), Paragraph(rate_text(row["pass_rate"]), cell_right),

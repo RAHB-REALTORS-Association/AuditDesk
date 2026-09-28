@@ -211,7 +211,8 @@ def brokerage_view(config, period):
     options = "".join(f'<option value="{key}" {"selected" if key == period else ""}>{label}</option>'
                       for key, (_, label) in PERIODS.items())
     rows = "".join(f'<tr><td data-sort="{esc(row["name"])}"><strong>{esc(row["name"])}</strong>'
-                   f'<small>Office ID: {esc(row["office_id"])}</small></td>'
+                   + (f'<small>{row["branch_count"]} branches combined</small>' if row["branch_count"] > 1 else "")
+                   + '</td>'
                    f'<td data-sort="{row["listings"]}">{row["listings"]:,}</td>'
                    f'<td data-sort="{row["audited"]}">{row["audited"]:,}</td>'
                    f'<td data-sort="{row["percentage"]}">{row["percentage"]:.1f}%</td>'
@@ -240,8 +241,8 @@ def brokerage_view(config, period):
         <div><span>Pass rate</span><strong>{pass_rate}</strong></div>
         <div><span>Fail rate</span><strong>{fail_rate}</strong></div></section>
         <section class="panel brokerage-panel"><div class="panel-head"><div><h2>Brokerage statistics</h2>
-        <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerage offices</p></div></div>
-        <div class="report-note">Each Bridge office ID is counted separately. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
+        <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerages</p></div></div>
+        <div class="report-note">Branches with the same brokerage name are combined. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
         <div class="table-wrap"><table class="brokerage-table" data-sortable><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'''
 
 
@@ -295,7 +296,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Daily audit report", "See listings considered and selected for audit by day."
         content = report_view(config)
     elif tab == "brokerages":
-        title, subtitle = "Brokerage statistics", "Review audit selection across brokerage offices."
+        title, subtitle = "Brokerage statistics", "Review audit selection across brokerages."
         content = brokerage_view(config, period)
     elif tab == "listings":
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Entered", "date"), sort_heading("Brokerage"),

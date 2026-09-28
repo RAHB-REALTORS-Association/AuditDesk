@@ -41,20 +41,23 @@ def brokerage_statistics(config, period="3m", today=None):
             if not start <= day <= today:
                 continue
             office_id = (record["brokerage_id"] or "").strip()
-            name = (record["brokerage_name"] or "").strip()
-            key = ("office", office_id) if office_id else ("name", name.casefold())
+            name = " ".join((record["brokerage_name"] or "").split())
+            key = ("name", name.casefold()) if name else ("office", office_id)
             group = groups.setdefault(key, {"name": name or (f"Office {office_id}" if office_id else "Unknown brokerage"),
-                                            "office_id": office_id, "listings": 0, "audited": 0,
+                                            "office_ids": set(), "listings": 0, "audited": 0,
                                             "passed": 0, "failed": 0})
             if name:
                 group["name"] = name
+            if office_id:
+                group["office_ids"].add(office_id)
             group["listings"] += 1
             group["audited"] += bool(record["audit_id"])
             group["passed"] += record["outcome"] == "passed"
             group["failed"] += record["outcome"] == "failed"
 
-    rows = sorted(groups.values(), key=lambda row: (-row["listings"], row["name"].casefold(), row["office_id"]))
+    rows = sorted(groups.values(), key=lambda row: (-row["listings"], row["name"].casefold()))
     for row in rows:
+        row["branch_count"] = len(row.pop("office_ids"))
         row["percentage"] = 100 * row["audited"] / row["listings"]
         row["completed"] = row["passed"] + row["failed"]
         row["pass_rate"] = 100 * row["passed"] / row["completed"] if row["completed"] else None
