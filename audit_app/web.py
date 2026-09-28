@@ -38,6 +38,11 @@ def badge(status):
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
 
+def sort_heading(label, kind="text", initial=False):
+    direction = ' aria-sort="descending"' if initial else ''
+    return f'<th{direction}><button type="button" class="sort-button" data-sort-type="{kind}">{esc(label)}</button></th>'
+
+
 def recipients(value):
     try:
         return ", ".join(json.loads(value)) or "—"
@@ -245,15 +250,19 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Daily audit report", "See listings considered and selected for audit by day."
         content = report_view(config)
     elif tab == "listings":
-        headings = "<th>MLS / Property</th><th>Entered</th><th>Brokerage</th><th>Listing agent</th><th>Processing status</th>"
-        rows = "".join(f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
+        headings = "".join((sort_heading("MLS / Property"), sort_heading("Entered", "date"), sort_heading("Brokerage"),
+                            sort_heading("Listing agent"), sort_heading("Processing status")))
+        rows = "".join(f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["entry_timestamp"])}">{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
         title, subtitle = "Listings considered", "Every new active listing evaluated by the daily selection job."
     elif tab == "runs":
         headings = "<th>Started</th><th>Status</th><th>Fetched</th><th>New</th><th>Selected</th><th>Error</th>"
         rows = "".join(f'<tr><td>{esc(local_time(r["started_at"], config.timezone))}</td><td>{badge(r["status"])}</td><td>{r["fetched_count"]}</td><td>{r["new_count"]}</td><td>{r["selected_count"]}</td><td class="error">{esc(r["error"])}</td></tr>' for r in runs)
         title, subtitle = "Scheduled runs", "Recent daily jobs and any errors they encountered."
     else:
-        headings = "<th>MLS / Property</th><th>Selected</th><th>Brokerage / Broker</th><th>Agent</th><th>Intended recipients</th><th>Actual recipient</th><th>Mode / Status</th><th>Work status</th><th>Assigned to</th><th>History</th><th>Outcome</th><th></th>"
+        headings = "".join((sort_heading("MLS / Property"), sort_heading("Selected", "date", True),
+                            sort_heading("Brokerage / Broker"), sort_heading("Agent"), sort_heading("Intended recipients"),
+                            sort_heading("Actual recipient"), sort_heading("Mode / Status"), sort_heading("Work status"),
+                            sort_heading("Assigned to"), sort_heading("History", "number"), sort_heading("Outcome"), "<th>Actions</th>"))
         rows = ""
         for r in audits:
             retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" else ""
@@ -270,15 +279,15 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             assignment_token = retry_token(config, f'assignment:{r["id"]}')
             assignment = f'<form method="post" action="/assignment/{r["id"]}" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><select name="reviewer_id" aria-label="Assign MLS {esc(r["mls_number"])}">{options}</select><button type="submit">Save</button></form>'
             reviewer_label = ("Previously assigned: " if not r["reviewer_id"] and r["reviewer_name_snapshot"] else "") + (r["reviewer_name"] or "")
-            rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
+            rows += f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{previous[r["id"]]}">{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
     if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report"}:
         if not rows:
             rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
-        content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
+        content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records{" · Click a column heading to sort these records" if tab in {"audits", "listings"} else ""}</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
 <body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
-<main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main></body></html>'''
+<main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main><script src="/static/sort.js" defer></script></body></html>'''
 
 
 def serve(config):
@@ -329,6 +338,9 @@ def serve(config):
             if path.path == "/static/app.css":
                 body = stylesheet
                 content_type = "text/css; charset=utf-8"
+            elif path.path == "/static/sort.js":
+                body = (Path(__file__).parent / "static" / "sort.js").read_bytes()
+                content_type = "text/javascript; charset=utf-8"
             elif path.path == "/static/cornerstone-logo-white.png":
                 body = (Path(__file__).parent / "static" / "cornerstone-logo-white.png").read_bytes()
                 content_type = "image/png"
