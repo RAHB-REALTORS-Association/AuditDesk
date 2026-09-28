@@ -211,8 +211,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         listings = db.execute("SELECT * FROM listings ORDER BY first_processed_at DESC LIMIT 200").fetchall()
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
-    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("reviewers", "Audit team"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
-    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("report", "Daily audit report"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
+    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
+    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("reviewers", "Audit team"), ("report", "Daily audit report"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
