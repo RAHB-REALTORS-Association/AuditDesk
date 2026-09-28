@@ -1,6 +1,6 @@
 # MLS Audit Desk
 
-A small internal application for selecting new Active Bridge listings for paperwork audits. The daily job records every listing considered, uses a configurable 5% lottery, applies brokerage and broker cooldowns, then sends selected requests through SendGrid. The staff page shows audit history and failed-email retries.
+A small internal application for selecting new Active Bridge listings for paperwork audits. The daily job records every listing considered, uses a configurable selection lottery, applies brokerage and broker cooldowns, then sends selected requests through SendGrid. The staff page shows audit history and failed-email retries.
 
 ## Start the staff interface
 
@@ -33,6 +33,10 @@ Edit the follow-up wording under **Failed-audit email**. Its subject and body su
 ## Track who is working on an audit
 
 Open **Audit team** to add names, correct a name, or remove a name from future assignments. Removing a name keeps it on audits already assigned to that person; it can be restored later. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The staff login is shared, so the selected name is a manual assignment rather than an authenticated user identity.
+
+## Change the audit selection percentage
+
+Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. The current shared dashboard login can access Admin settings.
 
 ## Simulate a full cycle
 
@@ -70,7 +74,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cornerstone.mls-audi
 
 ## Selection and delivery
 
-For `N` newly processed listings, the job draws a binomial target by giving each listing a 5% chance. It then excludes brokerages and brokers audited within their configured cooldown periods. Among eligible brokerages, it chooses with a square-root listing-volume weight and picks a random listing from that brokerage. Each brokerage and broker can be chosen at most once in a run. This limits volume dominance while keeping the long-run rate near 5% when enough brokerages remain eligible. If cooldowns leave fewer eligible brokerages than the target, the job records fewer audits.
+For `N` newly processed listings, the job draws a binomial target by giving each listing the saved selection chance (5% by default). It then excludes brokerages and brokers audited within their configured cooldown periods. Among eligible brokerages, it chooses with a square-root listing-volume weight and picks a random listing from that brokerage. Each brokerage and broker can be chosen at most once in a run. This limits volume dominance while keeping the long-run rate near the configured percentage when enough brokerages remain eligible. If cooldowns leave fewer eligible brokerages than the target, the job records fewer audits.
 
 The audit record is committed before SendGrid is called. HTTP failures become `email_failed` and can be retried from the staff page without creating a new audit. If the response is lost, the status is `email_unknown` and automatic retry is blocked because SendGrid may already have accepted the message. Staff should check SendGrid before any manual intervention. The SendGrid message ID, when returned, and every send attempt are stored.
 

@@ -60,6 +60,11 @@ CREATE TABLE IF NOT EXISTS audit_reviewers (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS selection_settings (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  rate_percent TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS email_attempts (
   id INTEGER PRIMARY KEY,
   audit_id INTEGER NOT NULL REFERENCES audits(id),

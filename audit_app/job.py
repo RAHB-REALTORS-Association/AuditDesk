@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from .bridge import BridgeClient
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
+from .settings import selection_percent
 
 
 LOG = logging.getLogger("audit_app")
@@ -32,9 +33,10 @@ def job_lock(path):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def choose_fairly(candidates, history, config, rng=random):
-    """Binomial 5% target, then weighted brokerage lottery with cooldowns."""
-    target = sum(rng.random() < config.rate for _ in candidates)
+def choose_fairly(candidates, history, config, rng=random, rate=None):
+    """Binomial rate target, then weighted brokerage lottery with cooldowns."""
+    rate = config.rate if rate is None else rate
+    target = sum(rng.random() < rate for _ in candidates)
     recent_offices = {r["brokerage_id"] for r in history if r["brokerage_id"] and r["office_recent"]}
     recent_brokers = {r["broker_id"] for r in history if r["broker_id"] and r["broker_recent"]}
     groups = {}
@@ -51,7 +53,7 @@ def choose_fairly(candidates, history, config, rng=random):
         listing = rng.choice(groups.pop(office))
         selected.append((listing, {
             "method": "binomial_target_weighted_brokerage_lottery",
-            "rate": config.rate,
+            "rate": rate,
             "target": target,
             "eligible_brokerages_at_draw": len(offices),
             "brokerage_weight": "sqrt(new listings)",
@@ -184,7 +186,8 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                     if cursor.rowcount:
                         values["id"] = cursor.lastrowid
                         fresh.append(values)
-                selected = choose_fairly(fresh, _recent_history(db, config, now), config, rng)
+                rate = float(selection_percent(config, db) / 100)
+                selected = choose_fairly(fresh, _recent_history(db, config, now), config, rng, rate=rate)
                 audit_ids = []
                 for listing, metadata in selected:
                     try:

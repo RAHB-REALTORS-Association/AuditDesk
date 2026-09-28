@@ -15,6 +15,7 @@ from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
+from .settings import display_percent, save_selection_percent, selection_percent
 from .simulation import simulate_cycle
 from .templates import (FIELDS, FAILURE_FIELDS, clean_html, current_failure_templates, current_templates,
                         format_message_parts, plain_to_html, save_failure_templates, save_templates, validate_templates)
@@ -159,6 +160,20 @@ def reviewers_view(config, reviewers, error=""):
         <table class="roster-table"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>{rows or '<tr><td colspan="2">No names yet. Add one above to begin assigning audits.</td></tr>'}</tbody></table></div></section>'''
 
 
+def admin_view(config, value=None, error=""):
+    current = display_percent(selection_percent(config))
+    shown = current if value is None else value
+    window_note = ("The live-data test has ended. Changing this percentage will not restart listing collection or email delivery."
+                   if config.test_mode and not config.test_window_open() else "")
+    return f'''<section class="panel admin-panel"><div class="panel-head"><div><h2>Listing selection</h2><p>Choose the percentage of new listings to target for audit.</p></div></div>
+        <div class="admin-content">{'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
+        <div class="admin-current"><span>Current selection rate</span><strong>{current}%</strong></div>
+        <form method="post" action="/admin/selection-rate" class="admin-rate-form"><input type="hidden" name="token" value="{retry_token(config, "selection-rate")}">
+        <label for="rate-percent">Selection percentage</label><div class="rate-control"><input id="rate-percent" name="rate_percent" type="number" min="0" max="100" step="0.01" inputmode="decimal" required value="{html.escape(shown, quote=True)}"><span>%</span><button class="primary-button" type="submit">Save percentage</button></div></form>
+        <p>Changes apply to future runs and new listings only. 0% pauses selection; 100% targets every eligible listing. Brokerage and broker cooldowns can reduce the final count.</p>
+        {f'<p class="admin-window-note">{window_note}</p>' if window_note else ''}</div></section>'''
+
+
 def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False):
     with connect(config.database_path) as db:
         counts = {
@@ -176,6 +191,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("reviewers", "Audit team"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("simulation", "Simulation")))
+    admin_nav = f'<a class="nav-item {"active" if tab == "admin" else ""}" href="/?tab=admin">Selection settings</a>'
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -201,6 +217,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     elif tab == "reviewers":
         title, subtitle = "Audit team", "Manage the names available when assigning an audit."
         content = reviewers_view(config, reviewers, error)
+    elif tab == "admin":
+        title, subtitle = "Admin", "Manage how many new listings are selected for audit."
+        content = admin_view(config, form_values, error)
     elif tab == "listings":
         headings = "<th>MLS / Property</th><th>Entered</th><th>Brokerage</th><th>Listing agent</th><th>Processing status</th>"
         rows = "".join(f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
@@ -227,12 +246,12 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             assignment = f'<form method="post" action="/assignment/{r["id"]}" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><select name="reviewer_id" aria-label="Assign MLS {esc(r["mls_number"])}">{options}</select><button type="submit">Save</button></form>'
             rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(r["reviewer_name"]) if r["reviewer_name"] else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers"}:
+    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin"}:
         if not rows:
             rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
-<body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
+<body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
 <main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main></body></html>'''
 
 
@@ -290,7 +309,7 @@ def serve(config):
             elif path.path == "/":
                 query = parse_qs(path.query)
                 tab = query.get("tab", ["audits"])[0]
-                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation"}:
+                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin"}:
                     tab = "audits"
                 audit_id = query.get("id", [""])[0]
                 if tab == "outcome" and not audit_id.isdigit():
@@ -315,6 +334,36 @@ def serve(config):
             host = self.headers.get("Host")
             if origin and urlparse(origin).netloc != host:
                 self.send_error(403)
+                return
+            if self.path == "/admin/selection-rate":
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 1024:
+                    self.send_error(413)
+                    return
+                try:
+                    form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
+                except UnicodeDecodeError:
+                    self.send_error(400)
+                    return
+                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, "selection-rate")):
+                    self.send_error(403)
+                    return
+                value = form.get("rate_percent", [""])[0]
+                try:
+                    save_selection_percent(config, value)
+                except ValueError as exc:
+                    page = render(config, "admin", form_values=value, error=str(exc)).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", str(len(page)))
+                    self.end_headers()
+                    self.wfile.write(page)
+                    return
+                self.send_response(303)
+                self.send_header("Location", "/?tab=admin&notice=" + quote("Selection percentage saved for future runs."))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             if self.path == "/reviewers" or self.path.startswith("/reviewers/") or self.path.startswith("/assignment/"):
                 length = int(self.headers.get("Content-Length", "0"))
@@ -476,7 +525,6 @@ def serve(config):
                 with connect(config.database_path) as db:
                     row = db.execute("SELECT failure_email_status FROM audits WHERE id=?", (audit_id,)).fetchone()
                 sent = deliver_failure_notice(config, audit_id, retry=bool(row and row["failure_email_status"] == "email_failed"))
-                from urllib.parse import quote
                 self.send_response(303)
                 self.send_header("Location", "/?tab=audits&notice=" + quote("Failed-audit notice accepted by SendGrid." if sent else "Notice was not sent. Check its status."))
                 self.send_header("Content-Length", "0")
@@ -497,7 +545,6 @@ def serve(config):
                 return
             result = deliver_audit(config, audit_id, retry=True)
             notice = "Email retry accepted by SendGrid." if result else "Retry was not sent. Check its status and error below."
-            from urllib.parse import quote
             self.send_response(303)
             self.send_header("Location", "/?notice=" + quote(notice))
             self.send_header("Content-Length", "0")
