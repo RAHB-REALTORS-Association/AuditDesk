@@ -1,0 +1,73 @@
+import tempfile
+import unittest
+from dataclasses import replace
+from datetime import date
+from pathlib import Path
+
+from audit_app.brokerage_pdf import build_brokerage_pdf
+from audit_app.brokerage_report import brokerage_statistics
+from audit_app.config import load_config
+from audit_app.database import connect, init_db
+from audit_app.web import render
+
+
+class BrokerageReportTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.config = replace(load_config(), database_path=str(Path(self.temp.name) / "audit.sqlite3"))
+        init_db(self.config.database_path)
+
+    def add_listing(self, number, office_id, processed, outcome=None, selected=False):
+        with connect(self.config.database_path) as db:
+            listing_id = db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
+                address,brokerage_id,brokerage_name,first_processed_at,processing_status)
+                VALUES(?,?,'Active',?,'Example Address',?,'Example Realty',?,'processed_not_selected')""",
+                (number, number, processed, office_id, processed)).lastrowid
+            if selected:
+                db.execute("""INSERT INTO audits(listing_id,selected_at,intended_to,intended_cc,actual_recipients,
+                    test_mode,email_status,selection_metadata,outcome) VALUES(?,?,'[]','[]','[]',1,'email_sent','{}',?)""",
+                    (listing_id, processed, outcome))
+            db.commit()
+
+    def test_office_counts_periods_and_completed_outcome_rates(self):
+        self.add_listing("A", "office-one", "2026-06-28T04:30:00+00:00", "passed", True)
+        self.add_listing("B", "office-one", "2026-09-27T14:00:00+00:00", "failed", True)
+        self.add_listing("C", "office-one", "2026-09-28T14:00:00+00:00", selected=True)
+        self.add_listing("D", "office-two", "2026-09-28T14:00:00+00:00")
+        self.add_listing("E", "office-one", "2026-06-28T03:30:00+00:00", "passed", True)
+        self.add_listing("F", "office-one", "2026-03-15T14:00:00+00:00")
+
+        three = brokerage_statistics(self.config, "3m", date(2026, 9, 28))
+        self.assertEqual(three["start"], date(2026, 6, 28))
+        self.assertEqual((three["total"], three["audited"], three["completed"], three["percentage"]),
+                         (4, 3, 2, 75.0))
+        self.assertEqual((three["pass_rate"], three["fail_rate"]), (50.0, 50.0))
+        self.assertEqual(len(three["rows"]), 2)
+        main = next(row for row in three["rows"] if row["office_id"] == "office-one")
+        self.assertEqual((main["listings"], main["audited"], main["passed"], main["failed"]), (3, 3, 1, 1))
+        other = next(row for row in three["rows"] if row["office_id"] == "office-two")
+        self.assertIsNone(other["pass_rate"])
+        self.assertIsNone(other["fail_rate"])
+        self.assertEqual(brokerage_statistics(self.config, "6m", date(2026, 9, 28))["total"], 5)
+        self.assertEqual(brokerage_statistics(self.config, "1y", date(2026, 9, 28))["total"], 6)
+
+    def test_view_and_pdf_handle_no_completed_audits(self):
+        self.add_listing("A", "office-one", "2026-09-28T14:00:00+00:00", selected=True)
+        report = brokerage_statistics(self.config, "3m", date(2026, 9, 28))
+        self.assertIsNone(report["pass_rate"])
+        page = render(self.config, "brokerages", period="3m")
+        self.assertIn("Pass rate", page)
+        self.assertIn("Fail rate", page)
+        self.assertIn('href="/reports/brokerages.pdf?period=3m"', page)
+        pdf = build_brokerage_pdf(report)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+        self.assertIn(b"%%EOF", pdf[-20:])
+
+    def test_invalid_period_is_rejected(self):
+        with self.assertRaises(ValueError):
+            brokerage_statistics(self.config, "2m")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
 from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
+from .brokerage_report import PERIODS, brokerage_statistics
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients
 from .job import deliver_audit
@@ -200,7 +201,51 @@ def report_view(config):
         <div class="table-wrap"><table class="report-table"><thead><tr><th>Date</th><th>Total listings</th><th>Audited listings</th><th>Audit %</th><th>Run status</th></tr></thead><tbody>{rows}</tbody></table></div></section>'''
 
 
-def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False):
+def brokerage_view(config, period):
+    report = brokerage_statistics(config, period)
+    def rate_text(value):
+        return f"{value:.1f}%" if value is not None else "—"
+    percentage = f'{report["percentage"]:.1f}%' if report["percentage"] is not None else "—"
+    pass_rate = f'{report["pass_rate"]:.1f}%' if report["pass_rate"] is not None else "—"
+    fail_rate = f'{report["fail_rate"]:.1f}%' if report["fail_rate"] is not None else "—"
+    options = "".join(f'<option value="{key}" {"selected" if key == period else ""}>{label}</option>'
+                      for key, (_, label) in PERIODS.items())
+    rows = "".join(f'<tr><td data-sort="{esc(row["name"])}"><strong>{esc(row["name"])}</strong>'
+                   f'<small>Office ID: {esc(row["office_id"])}</small></td>'
+                   f'<td data-sort="{row["listings"]}">{row["listings"]:,}</td>'
+                   f'<td data-sort="{row["audited"]}">{row["audited"]:,}</td>'
+                   f'<td data-sort="{row["percentage"]}">{row["percentage"]:.1f}%</td>'
+                   f'<td data-sort="{row["passed"]}">{row["passed"]:,}</td>'
+                   f'<td data-sort="{row["pass_rate"] if row["pass_rate"] is not None else ""}">{rate_text(row["pass_rate"])}</td>'
+                   f'<td data-sort="{row["failed"]}">{row["failed"]:,}</td>'
+                   f'<td data-sort="{row["fail_rate"] if row["fail_rate"] is not None else ""}">{rate_text(row["fail_rate"])}</td></tr>'
+                   for row in report["rows"])
+    if not rows:
+        rows = '<tr><td colspan="8" class="empty">No listings were recorded in this period.</td></tr>'
+    coverage = (f'Available app records begin {report["first_recorded"]:%b %d, %Y}; earlier dates in this period have no app history.'
+                if report["first_recorded"] and report["first_recorded"] > report["start"] else
+                "The selected period is covered by available app history.")
+    headings = "".join((sort_heading("Brokerage"), sort_heading("Listings", "number", True),
+                        sort_heading("Audited", "number"), sort_heading("Audit %", "number"),
+                        sort_heading("Passed", "number"), sort_heading("Pass rate", "number"),
+                        sort_heading("Failed", "number"), sort_heading("Fail rate", "number")))
+    return f'''<div class="brokerage-controls"><form method="get" action="/" class="brokerage-period-form">
+        <input type="hidden" name="tab" value="brokerages"><label for="brokerage-period">Reporting period</label>
+        <select id="brokerage-period" name="period">{options}</select><button type="submit">Apply</button></form>
+        <a class="primary-button report-download" href="/reports/brokerages.pdf?period={period}">Export branded PDF</a></div>
+        <section class="report-summary brokerage-summary"><div><span>Listings considered</span><strong>{report["total"]:,}</strong></div>
+        <div><span>Audited</span><strong>{report["audited"]:,}</strong></div>
+        <div><span>Audit percentage</span><strong>{percentage}</strong></div>
+        <div><span>Completed audits</span><strong>{report["completed"]:,}</strong></div>
+        <div><span>Pass rate</span><strong>{pass_rate}</strong></div>
+        <div><span>Fail rate</span><strong>{fail_rate}</strong></div></section>
+        <section class="panel brokerage-panel"><div class="panel-head"><div><h2>Brokerage statistics</h2>
+        <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerage offices</p></div></div>
+        <div class="report-note">Each Bridge office ID is counted separately. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
+        <div class="table-wrap"><table class="brokerage-table" data-sortable><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'''
+
+
+def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False, period="3m"):
     with connect(config.database_path) as db:
         counts = {
             "processed": db.execute("SELECT count(*) FROM listings").fetchone()[0],
@@ -217,7 +262,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
-    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("reviewers", "Audit team"), ("report", "Daily audit report"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
+    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("reviewers", "Audit team"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -249,6 +294,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     elif tab == "report":
         title, subtitle = "Daily audit report", "See listings considered and selected for audit by day."
         content = report_view(config)
+    elif tab == "brokerages":
+        title, subtitle = "Brokerage statistics", "Review audit selection across brokerage offices."
+        content = brokerage_view(config, period)
     elif tab == "listings":
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Entered", "date"), sort_heading("Brokerage"),
                             sort_heading("Listing agent"), sort_heading("Processing status")))
@@ -281,7 +329,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             reviewer_label = ("Previously assigned: " if not r["reviewer_id"] and r["reviewer_name_snapshot"] else "") + (r["reviewer_name"] or "")
             rows += f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{previous[r["id"]]}">{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report"}:
+    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report", "brokerages"}:
         if not rows:
             rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records{" · Click a column heading to sort these records" if tab in {"audits", "listings"} else ""}</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
@@ -344,21 +392,38 @@ def serve(config):
             elif path.path == "/static/cornerstone-logo-white.png":
                 body = (Path(__file__).parent / "static" / "cornerstone-logo-white.png").read_bytes()
                 content_type = "image/png"
+            elif path.path == "/reports/brokerages.pdf":
+                period = parse_qs(path.query).get("period", ["3m"])[0]
+                if period not in PERIODS:
+                    self.send_error(400, "Invalid report period")
+                    return
+                from .brokerage_pdf import build_brokerage_pdf
+                try:
+                    body = build_brokerage_pdf(brokerage_statistics(config, period))
+                except ImportError:
+                    self.send_error(503, "PDF export dependency is unavailable")
+                    return
+                content_type = "application/pdf"
             elif path.path == "/":
                 query = parse_qs(path.query)
                 tab = query.get("tab", ["audits"])[0]
-                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin", "report"}:
+                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin", "report", "brokerages"}:
                     tab = "audits"
                 audit_id = query.get("id", [""])[0]
                 if tab == "outcome" and not audit_id.isdigit():
                     tab = "audits"
-                body = render(config, tab, query.get("notice", [""])[0], audit_id=int(audit_id) if tab == "outcome" else None).encode()
+                period = query.get("period", ["3m"])[0]
+                if period not in PERIODS:
+                    period = "3m"
+                body = render(config, tab, query.get("notice", [""])[0], audit_id=int(audit_id) if tab == "outcome" else None, period=period).encode()
                 content_type = "text/html; charset=utf-8"
             else:
                 self.send_error(404)
                 return
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            if content_type == "application/pdf":
+                self.send_header("Content-Disposition", f'attachment; filename="cornerstone-brokerage-statistics-{period}.pdf"')
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Length", str(len(body)))

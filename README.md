@@ -42,6 +42,10 @@ Open **Admin → Selection settings** to set a percentage from 0% to 100%, with 
 
 Open **Admin → Daily audit report** for the past 90 local calendar days. It shows the number of unique new Active listings first processed by the app each day, how many were selected for audit, and the audited percentage. Manual test runs are included. Days with no completed run show unavailable values rather than a misleading zero; a completed run that found no new listings shows zero. The report is calculated from the persistent listing, audit, and run records, so it survives dashboard restarts. It does not represent all listings in the MLS if the app missed a daily intake.
 
+## Review brokerage statistics
+
+Open **Admin → Brokerage statistics** to compare brokerage offices for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the office has a completed audit. Offices are identified by Bridge office ID, so offices with the same name remain separate. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. Install PDF support with `python3 -m pip install -r requirements.txt` in the Python environment that runs the dashboard.
+
 ## Simulate a full cycle
 
 Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. This uses synthetic listings and a temporary database. It demonstrates the 24-hour and Active filters, brokerage cooldown, audit creation, test-mode recipient substitution, a simulated SendGrid failure, idempotent second run, and successful manual retry. It does not call Bridge or SendGrid and does not change the real audit history.
