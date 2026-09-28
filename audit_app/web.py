@@ -15,6 +15,7 @@ from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
+from .report import daily_audit_report
 from .settings import display_percent, save_selection_percent, selection_percent
 from .simulation import simulate_cycle
 from .templates import (FIELDS, FAILURE_FIELDS, clean_html, current_failure_templates, current_templates,
@@ -32,7 +33,7 @@ def local_time(value, zone):
 
 
 def badge(status):
-    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment"} else "neutral"
+    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment", "run_had_errors"} else "neutral"
     label = status.replace("_", " ").title()
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
@@ -175,6 +176,25 @@ def admin_view(config, value=None, error=""):
         {f'<p class="admin-window-note">{window_note}</p>' if window_note else ''}</div></section>'''
 
 
+def report_view(config):
+    daily = daily_audit_report(config)
+    total = sum(row["listings"] for row in daily)
+    audited = sum(row["audited"] for row in daily)
+    overall = f"{100 * audited / total:.1f}%" if total else "—"
+    rows = ""
+    for row in daily:
+        recorded = row["status"] in {"Recorded", "Run had errors"} or bool(row["listings"])
+        listings = str(row["listings"]) if recorded else "—"
+        selected = str(row["audited"]) if recorded else "—"
+        percentage = f'{row["percentage"]:.1f}%' if row["percentage"] is not None else "—"
+        rows += f'<tr><td><strong>{row["date"].strftime("%b %d, %Y")}</strong></td><td>{listings}</td><td>{selected}</td><td>{percentage}</td><td>{badge(row["status"].lower().replace(" ", "_"))}</td></tr>'
+    return f'''<section class="report-summary"><div><span>Listings considered</span><strong>{total}</strong></div>
+        <div><span>Audited</span><strong>{audited}</strong></div><div><span>Audit percentage</span><strong>{overall}</strong></div></section>
+        <section class="panel report-panel"><div class="panel-head"><div><h2>Daily audit report</h2><p>Past 90 days, newest first</p></div></div>
+        <div class="report-note">Counts are unique new Active listings first processed by the app on each date in {esc(config.timezone)}, including manual test runs. A day without a completed run is shown as unavailable rather than zero.</div>
+        <div class="table-wrap"><table class="report-table"><thead><tr><th>Date</th><th>Total listings</th><th>Audited listings</th><th>Audit %</th><th>Run status</th></tr></thead><tbody>{rows}</tbody></table></div></section>'''
+
+
 def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False):
     with connect(config.database_path) as db:
         counts = {
@@ -192,7 +212,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("reviewers", "Audit team"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
-    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
+    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("report", "Daily audit report"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -221,6 +241,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     elif tab == "admin":
         title, subtitle = "Admin", "Manage how many new listings are selected for audit."
         content = admin_view(config, form_values, error)
+    elif tab == "report":
+        title, subtitle = "Daily audit report", "See listings considered and selected for audit by day."
+        content = report_view(config)
     elif tab == "listings":
         headings = "<th>MLS / Property</th><th>Entered</th><th>Brokerage</th><th>Listing agent</th><th>Processing status</th>"
         rows = "".join(f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
@@ -249,7 +272,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             reviewer_label = ("Previously assigned: " if not r["reviewer_id"] and r["reviewer_name_snapshot"] else "") + (r["reviewer_name"] or "")
             rows += f'<tr><td><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td>{esc(local_time(r["selected_at"], config.timezone))}</td><td>{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td>{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td>{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td>{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td>{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin"}:
+    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report"}:
         if not rows:
             rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
@@ -312,7 +335,7 @@ def serve(config):
             elif path.path == "/":
                 query = parse_qs(path.query)
                 tab = query.get("tab", ["audits"])[0]
-                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin"}:
+                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin", "report"}:
                     tab = "audits"
                 audit_id = query.get("id", [""])[0]
                 if tab == "outcome" and not audit_id.isdigit():

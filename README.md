@@ -38,6 +38,10 @@ Open **Audit team** to add names, correct a name, remove a name from future assi
 
 Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. The current shared dashboard login can access Admin settings.
 
+## Review daily audit volume
+
+Open **Admin → Daily audit report** for the past 90 local calendar days. It shows the number of unique new Active listings first processed by the app each day, how many were selected for audit, and the audited percentage. Manual test runs are included. Days with no completed run show unavailable values rather than a misleading zero; a completed run that found no new listings shows zero. The report is calculated from the persistent listing, audit, and run records, so it survives dashboard restarts. It does not represent all listings in the MLS if the app missed a daily intake.
+
 ## Simulate a full cycle
 
 Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. This uses synthetic listings and a temporary database. It demonstrates the 24-hour and Active filters, brokerage cooldown, audit creation, test-mode recipient substitution, a simulated SendGrid failure, idempotent second run, and successful manual retry. It does not call Bridge or SendGrid and does not change the real audit history.
