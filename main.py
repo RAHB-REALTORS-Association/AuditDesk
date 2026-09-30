@@ -37,7 +37,7 @@ class JsonFormatter(logging.Formatter):
 
 def main():
     parser = argparse.ArgumentParser(description="MLS Audit Desk")
-    parser.add_argument("command", choices=("inspect-bridge", "run", "serve", "simulate"))
+    parser.add_argument("command", choices=("inspect-bridge", "backfill-office-addresses", "run", "serve", "simulate"))
     args = parser.parse_args()
     load_dotenv()
     config = load_config()
@@ -48,6 +48,9 @@ def main():
         metadata = BridgeClient(config).inspect_metadata()
         report = {resource: {name: {"field": field, "type": metadata[resource][field]} for name, field in mapping.items()} for resource, mapping in config.field_map.items()}
         print(json.dumps(report, indent=2))
+    elif args.command == "backfill-office-addresses":
+        from audit_app.office_backfill import backfill_office_addresses
+        print(json.dumps(backfill_office_addresses(config)))
     elif args.command == "run":
         print(json.dumps(run_job(config)))
     elif args.command == "simulate":

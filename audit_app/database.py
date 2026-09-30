@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS listings (
   brokerage_id TEXT,
   brokerage_name TEXT,
   brokerage_email TEXT,
+  brokerage_address TEXT,
   broker_id TEXT,
   broker_name TEXT,
   broker_first_name TEXT,
@@ -133,6 +134,8 @@ def init_db(path):
         columns = {row["name"] for row in db.execute("PRAGMA table_info(listings)")}
         if "broker_first_name" not in columns:
             db.execute("ALTER TABLE listings ADD COLUMN broker_first_name TEXT")
+        if "brokerage_address" not in columns:
+            db.execute("ALTER TABLE listings ADD COLUMN brokerage_address TEXT")
         template_columns = {row["name"] for row in db.execute("PRAGMA table_info(email_template)")}
         if "body_format" not in template_columns:
             db.execute("ALTER TABLE email_template ADD COLUMN body_format TEXT NOT NULL DEFAULT 'plain'")

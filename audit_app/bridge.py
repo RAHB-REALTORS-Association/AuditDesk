@@ -11,6 +11,13 @@ class BridgeError(Exception):
     pass
 
 
+def office_address(office, fields):
+    """Format the physical address supplied by a Bridge Office profile."""
+    street = [str(office.get(fields[key]) or "").strip() for key in ("address1", "address2")]
+    locality = [str(office.get(fields[key]) or "").strip() for key in ("city", "province", "postal_code")]
+    return ", ".join(part for part in (*street, " ".join(part for part in locality if part)) if part) or None
+
+
 class BridgeClient:
     def __init__(self, config):
         self.config = config
@@ -119,6 +126,7 @@ class BridgeClient:
             listing["brokerage_id"] = listing.pop("office_id", None)
             listing.pop("office_name", None)
             listing["brokerage_email"] = office.get(office_map["email"])
+            listing["brokerage_address"] = office_address(office, office_map)
             listing["broker_id"] = broker_id
             listing["broker_name"] = broker.get(member_map["name"])
             listing["broker_first_name"] = broker.get(member_map["first_name"])

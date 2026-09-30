@@ -10,7 +10,9 @@ document.querySelectorAll('table[data-sortable]').forEach((table) => {
     button.addEventListener('click', () => {
       const direction = heading.getAttribute('aria-sort') === 'ascending' ? 'descending' : 'ascending';
       const kind = button.dataset.sortType;
-      const rows = Array.from(body.rows).map((row, index) => ({ row, index }));
+      const grouped = table.hasAttribute('data-sort-groups');
+      const rows = (grouped ? Array.from(table.tBodies).map((section) => section.rows[0]) : Array.from(body.rows))
+        .map((row, index) => ({ row, index }));
       if (rows.length < 2 || rows.some(({ row }) => row.cells.length !== headings.length)) return;
 
       function key(row) {
@@ -32,7 +34,8 @@ document.querySelectorAll('table[data-sortable]').forEach((table) => {
 
       headings.forEach((item) => item.removeAttribute('aria-sort'));
       heading.setAttribute('aria-sort', direction);
-      body.append(...rows.map(({ row }) => row));
+      if (grouped) table.append(...rows.map(({ row }) => row.parentElement));
+      else body.append(...rows.map(({ row }) => row));
     });
   });
 });

@@ -89,35 +89,54 @@ def build_brokerage_pdf(report):
     story.extend([card_table, Spacer(1, 10), Paragraph(coverage +
                   f' {report["completed"]:,} of {report["audited"]:,} selected audits have a recorded result. Includes manual test runs.', note),
                   Spacer(1, 16), Paragraph("Brokerage detail", heading),
-                  Paragraph("Ordered by listing volume. Branches with the same brokerage name are combined.", subtitle),
+                  Paragraph("Ordered by listing volume. Each brokerage is followed by its individual branch addresses and statistics.", subtitle),
                   Spacer(1, 10)])
 
     data = [[Paragraph("BROKERAGE", cell_head), Paragraph("LISTINGS", cell_head_right),
              Paragraph("AUDITED", cell_head_right), Paragraph("AUDIT %", cell_head_right),
              Paragraph("PASSED", cell_head_right), Paragraph("PASS RATE", cell_head_right),
              Paragraph("FAILED", cell_head_right), Paragraph("FAIL RATE", cell_head_right)]]
+    parent_rows = []
+    branch_rows = []
+    group_ranges = []
     for row in report["rows"]:
         name = escape(row["name"])
-        if row["branch_count"] > 1:
-            name += f'<br/><font size="7" color="#637589">{row["branch_count"]} branches combined</font>'
+        name += f'<br/><font size="7" color="#637589">{row["branch_count"]} {"branch" if row["branch_count"] == 1 else "branches"}</font>'
+        parent_rows.append(len(data))
         data.append([Paragraph(name, cell), Paragraph(f'{row["listings"]:,}', cell_right),
                      Paragraph(f'{row["audited"]:,}', cell_right), Paragraph(rate_text(row["percentage"]), cell_right),
                      Paragraph(f'{row["passed"]:,}', cell_right), Paragraph(rate_text(row["pass_rate"]), cell_right),
                      Paragraph(f'{row["failed"]:,}', cell_right), Paragraph(rate_text(row["fail_rate"]), cell_right)])
+        for branch in row["branches"]:
+            branch_rows.append(len(data))
+            address = escape(branch["address"] or "Address unavailable")
+            data.append([Paragraph(f'<font color="#28567e">Branch: {address}</font>', cell),
+                         Paragraph(f'{branch["listings"]:,}', cell_right),
+                         Paragraph(f'{branch["audited"]:,}', cell_right),
+                         Paragraph(rate_text(branch["percentage"]), cell_right),
+                         Paragraph(f'{branch["passed"]:,}', cell_right),
+                         Paragraph(rate_text(branch["pass_rate"]), cell_right),
+                         Paragraph(f'{branch["failed"]:,}', cell_right),
+                         Paragraph(rate_text(branch["fail_rate"]), cell_right)])
+        group_ranges.append((parent_rows[-1], len(data) - 1))
     if not report["rows"]:
         data.append([Paragraph("No listings were recorded in this period.", cell)] + [""] * 7)
     table = Table(data, colWidths=[263] + [63] * 7, repeatRows=1, hAlign="LEFT")
-    table.setStyle(TableStyle([
+    styles = [
         ("BACKGROUND", (0, 0), (-1, 0), blue),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fb")]),
         ("LINEBELOW", (0, 0), (-1, 0), 1, blue),
         ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#dfe5eb")),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
+    ]
+    styles.extend(("BACKGROUND", (0, index), (-1, index), colors.HexColor("#e6edf4")) for index in parent_rows)
+    styles.extend(("BACKGROUND", (0, index), (-1, index), colors.white) for index in branch_rows)
+    styles.extend(("LEFTPADDING", (0, index), (0, index), 19) for index in branch_rows)
+    styles.extend(("NOSPLIT", (0, start), (-1, end)) for start, end in group_ranges)
+    table.setStyle(TableStyle(styles))
     story.extend([table, Spacer(1, 14)])
 
     story.append(Paragraph("Method: Audited listings have a saved audit selection, regardless of email delivery. "

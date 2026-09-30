@@ -21,6 +21,11 @@
     "key": "OfficeKey",
     "name": "OfficeName",
     "email": "OfficeEmail",
-    "broker_id": "OfficeBrokerKey"
+    "broker_id": "OfficeBrokerKey",
+    "address1": "OfficeAddress1",
+    "address2": "OfficeAddress2",
+    "city": "OfficeCity",
+    "province": "OfficeStateOrProvince",
+    "postal_code": "OfficePostalCode"
   }
 }

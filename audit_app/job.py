@@ -17,7 +17,7 @@ from .settings import selection_percent
 LOG = logging.getLogger("audit_app")
 LISTING_COLUMNS = (
     "bridge_listing_id", "mls_number", "status", "entry_timestamp", "address", "agent_id",
-    "agent_name", "agent_email", "brokerage_id", "brokerage_name", "brokerage_email",
+    "agent_name", "agent_email", "brokerage_id", "brokerage_name", "brokerage_email", "brokerage_address",
     "broker_id", "broker_name", "broker_first_name", "broker_email", "first_processed_at", "processing_status",
 )
 
@@ -174,6 +174,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                         "brokerage_id": listing.get("brokerage_id"),
                         "brokerage_name": listing.get("brokerage_name"),
                         "brokerage_email": listing.get("brokerage_email"),
+                        "brokerage_address": listing.get("brokerage_address"),
                         "broker_id": listing.get("broker_id"),
                         "broker_name": listing.get("broker_name"),
                         "broker_first_name": listing.get("broker_first_name"),

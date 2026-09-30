@@ -210,19 +210,32 @@ def brokerage_view(config, period):
     fail_rate = f'{report["fail_rate"]:.1f}%' if report["fail_rate"] is not None else "—"
     options = "".join(f'<option value="{key}" {"selected" if key == period else ""}>{label}</option>'
                       for key, (_, label) in PERIODS.items())
-    rows = "".join(f'<tr><td data-sort="{esc(row["name"])}"><strong>{esc(row["name"])}</strong>'
-                   + (f'<small>{row["branch_count"]} branches combined</small>' if row["branch_count"] > 1 else "")
-                   + '</td>'
-                   f'<td data-sort="{row["listings"]}">{row["listings"]:,}</td>'
-                   f'<td data-sort="{row["audited"]}">{row["audited"]:,}</td>'
-                   f'<td data-sort="{row["percentage"]}">{row["percentage"]:.1f}%</td>'
-                   f'<td data-sort="{row["passed"]}">{row["passed"]:,}</td>'
-                   f'<td data-sort="{row["pass_rate"] if row["pass_rate"] is not None else ""}">{rate_text(row["pass_rate"])}</td>'
-                   f'<td data-sort="{row["failed"]}">{row["failed"]:,}</td>'
-                   f'<td data-sort="{row["fail_rate"] if row["fail_rate"] is not None else ""}">{rate_text(row["fail_rate"])}</td></tr>'
-                   for row in report["rows"])
+    def cells(row):
+        return (f'<td data-sort="{row["listings"]}">{row["listings"]:,}</td>'
+                f'<td data-sort="{row["audited"]}">{row["audited"]:,}</td>'
+                f'<td data-sort="{row["percentage"]}">{row["percentage"]:.1f}%</td>'
+                f'<td data-sort="{row["passed"]}">{row["passed"]:,}</td>'
+                f'<td data-sort="{row["pass_rate"] if row["pass_rate"] is not None else ""}">{rate_text(row["pass_rate"])}</td>'
+                f'<td data-sort="{row["failed"]}">{row["failed"]:,}</td>'
+                f'<td data-sort="{row["fail_rate"] if row["fail_rate"] is not None else ""}">{rate_text(row["fail_rate"])}</td>')
+    rows = ""
+    for index, row in enumerate(report["rows"]):
+        branch_label = "branch" if row["branch_count"] == 1 else "branches"
+        address = row["branches"][0]["address"] if row["branch_count"] == 1 else None
+        details = f'<small>{esc(address) if address else str(row["branch_count"]) + " " + branch_label}</small>'
+        button = (f'<button type="button" class="branch-toggle" aria-expanded="false" '
+                  f'aria-controls="brokerage-branches-{index}" data-count="{row["branch_count"]}">'
+                  f'View {row["branch_count"]} {branch_label}</button>')
+        parent = (f'<tr class="brokerage-parent"><td data-sort="{esc(row["name"])}">'
+                  f'<strong>{esc(row["name"])}</strong>{details}{button}</td>{cells(row)}</tr>')
+        branches = "".join(
+            f'<tr class="branch-row" id="brokerage-branches-{index}-{branch_index}" hidden>'
+            f'<td><span class="branch-indent">{esc(branch["address"] or "Address unavailable")}</span>'
+            f'<small>Office {esc(branch["office_id"] or "unknown")}</small></td>{cells(branch)}</tr>'
+            for branch_index, branch in enumerate(row["branches"]))
+        rows += f'<tbody class="brokerage-group" id="brokerage-branches-{index}">{parent}{branches}</tbody>'
     if not rows:
-        rows = '<tr><td colspan="8" class="empty">No listings were recorded in this period.</td></tr>'
+        rows = '<tbody><tr><td colspan="8" class="empty">No listings were recorded in this period.</td></tr></tbody>'
     coverage = (f'Available app records begin {report["first_recorded"]:%b %d, %Y}; earlier dates in this period have no app history.'
                 if report["first_recorded"] and report["first_recorded"] > report["start"] else
                 "The selected period is covered by available app history.")
@@ -242,8 +255,8 @@ def brokerage_view(config, period):
         <div><span>Fail rate</span><strong>{fail_rate}</strong></div></section>
         <section class="panel brokerage-panel"><div class="panel-head"><div><h2>Brokerage statistics</h2>
         <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerages</p></div></div>
-        <div class="report-note">Branches with the same brokerage name are combined. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
-        <div class="table-wrap"><table class="brokerage-table" data-sortable><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'''
+        <div class="report-note">Branches with the same brokerage name are combined. Select “View branches” to see each office address and its statistics. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
+        <div class="table-wrap"><table class="brokerage-table" data-sortable data-sort-groups><thead><tr>{headings}</tr></thead>{rows}</table></div></section>'''
 
 
 def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False, period="3m"):
@@ -336,7 +349,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records{" · Click a column heading to sort these records" if tab in {"audits", "listings"} else ""}</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
 <body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
-<main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main><script src="/static/sort.js" defer></script></body></html>'''
+<main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script></body></html>'''
 
 
 def serve(config):
@@ -389,6 +402,9 @@ def serve(config):
                 content_type = "text/css; charset=utf-8"
             elif path.path == "/static/sort.js":
                 body = (Path(__file__).parent / "static" / "sort.js").read_bytes()
+                content_type = "text/javascript; charset=utf-8"
+            elif path.path == "/static/branches.js":
+                body = (Path(__file__).parent / "static" / "branches.js").read_bytes()
                 content_type = "text/javascript; charset=utf-8"
             elif path.path == "/static/cornerstone-logo-white.png":
                 body = (Path(__file__).parent / "static" / "cornerstone-logo-white.png").read_bytes()

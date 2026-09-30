@@ -32,7 +32,7 @@ def brokerage_statistics(config, period="3m", today=None):
     first_recorded = None
 
     with connect(config.database_path) as db:
-        records = db.execute("""SELECT l.brokerage_id, l.brokerage_name, l.first_processed_at,
+        records = db.execute("""SELECT l.brokerage_id, l.brokerage_name, l.brokerage_address, l.first_processed_at,
             a.id AS audit_id, a.outcome FROM listings l LEFT JOIN audits a ON a.listing_id=l.id
             ORDER BY l.first_processed_at""")
         for record in records:
@@ -44,24 +44,33 @@ def brokerage_statistics(config, period="3m", today=None):
             name = " ".join((record["brokerage_name"] or "").split())
             key = ("name", name.casefold()) if name else ("office", office_id)
             group = groups.setdefault(key, {"name": name or (f"Office {office_id}" if office_id else "Unknown brokerage"),
-                                            "office_ids": set(), "listings": 0, "audited": 0,
+                                            "branches": {}, "listings": 0, "audited": 0,
                                             "passed": 0, "failed": 0})
             if name:
                 group["name"] = name
-            if office_id:
-                group["office_ids"].add(office_id)
-            group["listings"] += 1
-            group["audited"] += bool(record["audit_id"])
-            group["passed"] += record["outcome"] == "passed"
-            group["failed"] += record["outcome"] == "failed"
+            branch = group["branches"].setdefault(office_id, {"office_id": office_id,
+                "address": None, "listings": 0, "audited": 0, "passed": 0, "failed": 0})
+            if record["brokerage_address"]:
+                branch["address"] = record["brokerage_address"]
+            for target in (group, branch):
+                target["listings"] += 1
+                target["audited"] += bool(record["audit_id"])
+                target["passed"] += record["outcome"] == "passed"
+                target["failed"] += record["outcome"] == "failed"
 
     rows = sorted(groups.values(), key=lambda row: (-row["listings"], row["name"].casefold()))
-    for row in rows:
-        row["branch_count"] = len(row.pop("office_ids"))
+    def add_rates(row):
         row["percentage"] = 100 * row["audited"] / row["listings"]
         row["completed"] = row["passed"] + row["failed"]
         row["pass_rate"] = 100 * row["passed"] / row["completed"] if row["completed"] else None
         row["fail_rate"] = 100 * row["failed"] / row["completed"] if row["completed"] else None
+
+    for row in rows:
+        row["branches"] = sorted(row["branches"].values(), key=lambda branch: ((branch["address"] or "").casefold(), branch["office_id"]))
+        row["branch_count"] = len(row["branches"])
+        add_rates(row)
+        for branch in row["branches"]:
+            add_rates(branch)
     total = sum(row["listings"] for row in rows)
     audited = sum(row["audited"] for row in rows)
     passed = sum(row["passed"] for row in rows)
