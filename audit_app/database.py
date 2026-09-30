@@ -122,6 +122,13 @@ def connect(path):
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     try:
+        from flask import g, has_request_context, request
+        if has_request_context() and request.method == "POST" and hasattr(g, "expected_revision") and not getattr(g, "mutation_started", False):
+            from werkzeug.exceptions import Conflict
+            db.execute("BEGIN IMMEDIATE")
+            revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
+            if revision != g.expected_revision:
+                raise Conflict("Records changed while this form was open. Refresh before saving; your change was not applied.")
         yield db
     finally:
         db.close()
@@ -130,7 +137,13 @@ def connect(path):
 def init_db(path):
     Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with connect(path) as db:
-        db.executescript(SCHEMA)
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version > 1:
+            raise ValueError("Database schema is newer than this application")
+        db.execute("BEGIN IMMEDIATE")
+        for statement in SCHEMA.split(";"):
+            if statement.strip() and not statement.strip().startswith("PRAGMA"):
+                db.execute(statement)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(listings)")}
         if "broker_first_name" not in columns:
             db.execute("ALTER TABLE listings ADD COLUMN broker_first_name TEXT")
@@ -151,4 +164,15 @@ def init_db(path):
         db.execute("""UPDATE audits SET reviewer_name_snapshot=(
             SELECT name FROM audit_reviewers WHERE id=audits.reviewer_id)
             WHERE reviewer_id IS NOT NULL AND reviewer_name_snapshot IS NULL""")
+        db.execute("""CREATE TABLE IF NOT EXISTS app_users (
+            id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            subject TEXT UNIQUE, display_name TEXT NOT NULL DEFAULT '',
+            role TEXT NOT NULL CHECK(role IN ('reviewer','manager','admin')),
+            active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        db.execute("""CREATE TABLE IF NOT EXISTS activity_events (
+            id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL,
+            detail TEXT NOT NULL DEFAULT '')""")
+        db.execute("PRAGMA user_version=1")
         db.commit()

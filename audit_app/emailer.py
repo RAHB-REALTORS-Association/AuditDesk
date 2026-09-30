@@ -57,6 +57,10 @@ def message_parts(listing, config, intended_to, intended_cc):
 
 
 def send_email(config, listing, audit_id, intended_to, intended_cc, actual):
+    with connect(config.database_path) as db:
+        audit = db.execute("SELECT test_mode FROM audits WHERE id=?", (audit_id,)).fetchone()
+    if audit and audit["test_mode"] and not config.test_mode:
+        raise EmailError("A test audit cannot send a production request")
     # Rebuild recipients from the listing at the final SendGrid boundary.
     intended_to, intended_cc, actual = resolve_recipients(listing, config)
     subject, body, rich_body = message_parts(listing, config, intended_to, intended_cc)
@@ -79,6 +83,8 @@ def send_failure_email(config, listing, audit_id, issues):
 
 
 def _post_message(config, audit_id, intended_to, intended_cc, actual, subject, body, rich_body, kind):
+    if not config.email_enabled:
+        raise EmailError("Email delivery is disabled")
     if not config.test_window_open():
         raise EmailError("Test window has ended; no email was sent")
     if not config.sendgrid_key:

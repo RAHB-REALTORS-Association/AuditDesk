@@ -1,4 +1,5 @@
-import fcntl
+from .security import event
+from filelock import FileLock
 import json
 import logging
 import math
@@ -25,12 +26,8 @@ LISTING_COLUMNS = (
 @contextmanager
 def job_lock(path):
     lock_path = str(Path(path).resolve()) + ".lock"
-    with open(lock_path, "a+") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+    with FileLock(lock_path):
+        yield
 
 
 def choose_fairly(candidates, history, config, rng=random, rate=None):
@@ -78,14 +75,22 @@ def _listing_dict(row):
 
 
 def deliver_audit(config, audit_id, retry=False, sender=None):
-    if not config.test_window_open():
+    if not config.email_enabled or not config.test_window_open():
         LOG.info("test_window_closed", extra={"audit_id": audit_id})
         return False
     with connect(config.database_path) as db:
-        db.execute("BEGIN IMMEDIATE")
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
         audit = db.execute("SELECT * FROM audits WHERE id=?", (audit_id,)).fetchone()
         if not audit or audit["email_status"] != ("email_failed" if retry else "email_pending"):
             db.rollback()
+            return False
+        if audit["test_mode"] and not config.test_mode:
+            db.execute("UPDATE audits SET email_status='email_blocked',last_error=? WHERE id=?",
+                       ("A test audit cannot send a production request.", audit_id))
+            db.execute("UPDATE listings SET processing_status='email_blocked' WHERE id=?", (audit["listing_id"],))
+            event(db, "email.blocked", audit_id, "test-to-production")
+            db.commit()
             return False
         listing = _listing_dict(db.execute("SELECT * FROM listings WHERE id=?", (audit["listing_id"],)).fetchone())
         intended_to = json.loads(audit["intended_to"])
@@ -105,6 +110,7 @@ def deliver_audit(config, audit_id, retry=False, sender=None):
         cursor = db.execute("INSERT INTO email_attempts(audit_id,attempted_at,status,actual_recipients) VALUES(?,?,?,?)",
                             (audit_id, utcnow(), "started", json.dumps(actual)))
         attempt_id = cursor.lastrowid
+        event(db, "request_email.started", audit_id)
         db.commit()
     try:
         message_id = (sender or send_email)(config, listing, audit_id, intended_to, intended_cc, actual)
@@ -140,7 +146,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
             end_utc = tomorrow_eight.astimezone(timezone.utc).isoformat(timespec="seconds")
             with connect(config.database_path) as db:
                 already = db.execute("""SELECT 1 FROM runs WHERE started_at>=? AND started_at<?
-                    AND status!='test_window_closed' LIMIT 1""", (start_utc, end_utc)).fetchone()
+                    AND status IN ('completed','completed_with_email_errors') LIMIT 1""", (start_utc, end_utc)).fetchone()
             if already:
                 return {"fetched": 0, "new": 0, "selected": 0, "skipped": "already_ran_today"}
         if not config.test_window_open(now):
@@ -152,6 +158,10 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
             return {"fetched": 0, "new": 0, "selected": 0, "skipped": "test_window_closed"}
         start = now - timedelta(hours=config.window_hours)
         with connect(config.database_path) as db:
+            last = db.execute("SELECT max(started_at) FROM runs WHERE status IN ('completed','completed_with_email_errors')").fetchone()[0]
+        if last:
+            start = min(start, datetime.fromisoformat(last))
+        with connect(config.database_path) as db:
             cursor = db.execute("INSERT INTO runs(started_at,status) VALUES(?,?)", (now.isoformat(timespec="seconds"), "running"))
             run_id = cursor.lastrowid
             db.commit()
@@ -159,7 +169,8 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
             client = client or BridgeClient(config)
             fetched = list(client.active_new_listings(start, now))
             with connect(config.database_path) as db:
-                db.execute("BEGIN IMMEDIATE")
+                if not db.in_transaction:
+                    db.execute("BEGIN IMMEDIATE")
                 fresh = []
                 for listing in fetched:
                     values = {
@@ -211,6 +222,9 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                 db.execute("UPDATE runs SET status='completed', finished_at=?, fetched_count=?, new_count=?, selected_count=? WHERE id=?",
                            (utcnow(), len(fetched), len(fresh), len(selected), run_id))
                 db.commit()
+            # Resume committed requests that never began sending, including after downtime.
+            with connect(config.database_path) as db:
+                audit_ids = [row[0] for row in db.execute("SELECT id FROM audits WHERE email_status='email_pending'")]
             failed_deliveries = 0
             for audit_id in audit_ids:
                 if not deliver_audit(config, audit_id, sender=sender):

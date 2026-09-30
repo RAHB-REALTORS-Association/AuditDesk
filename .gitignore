@@ -10,5 +10,8 @@
 *.log
 __pycache__/
 .pytest_cache/
+.venv/
+.coverage
+data/
 output/pdf/
 tmp/pdfs/

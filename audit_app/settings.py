@@ -1,3 +1,4 @@
+from .security import event
 """Editable selection settings shared by the dashboard and scheduled job."""
 
 import re
@@ -26,6 +27,7 @@ def save_selection_percent(config, raw):
         db.execute("""INSERT INTO selection_settings(id,rate_percent,updated_at) VALUES(1,?,?)
             ON CONFLICT(id) DO UPDATE SET rate_percent=excluded.rate_percent,updated_at=excluded.updated_at""",
                    (str(percent), utcnow()))
+        event(db, "selection.updated", "selection-rate", str(percent))
         db.commit()
     return percent
 

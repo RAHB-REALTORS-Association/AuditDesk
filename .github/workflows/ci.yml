@@ -1,0 +1,30 @@
+name: Verify AuditDesk
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r requirements.lock
+      - run: python -m unittest discover -s tests
+      - run: docker build -t auditdesk:ci .
+      - run: python scripts/container_smoke.py auditdesk:ci
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install pip-audit
+      - run: python -m pip_audit -r requirements.lock

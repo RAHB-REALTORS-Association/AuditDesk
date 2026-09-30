@@ -1,3 +1,4 @@
+from .security import event
 """Staff audit decisions and follow-up notices."""
 
 import json
@@ -19,7 +20,8 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
     if len(issues) > 5000:
         raise ValueError("Issues must be 5,000 characters or fewer.")
     with connect(config.database_path) as db:
-        db.execute("BEGIN IMMEDIATE")
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
         audit = db.execute("SELECT outcome,email_status FROM audits WHERE id=?", (audit_id,)).fetchone()
         if not audit:
             db.rollback()
@@ -33,6 +35,7 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
         db.execute("""UPDATE audits SET outcome=?,outcome_at=?,issues=?,failure_email_status=? WHERE id=?""",
                    (outcome, utcnow(), issues if outcome == "failed" else None,
                     "email_pending" if outcome == "failed" else None, audit_id))
+        event(db, "audit.result", audit_id, outcome)
         db.commit()
     if outcome == "failed":
         deliver_failure_notice(config, audit_id, sender=sender)
@@ -40,12 +43,13 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
 
 
 def deliver_failure_notice(config, audit_id, retry=False, sender=None):
-    if not config.test_window_open():
+    if not config.email_enabled or not config.test_window_open():
         LOG.info("failure_notice_blocked_by_test_window", extra={"audit_id": audit_id})
         return False
     expected = "email_failed" if retry else "email_pending"
     with connect(config.database_path) as db:
-        db.execute("BEGIN IMMEDIATE")
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
         audit = db.execute("SELECT * FROM audits WHERE id=?", (audit_id,)).fetchone()
         if not audit or audit["outcome"] != "failed" or audit["failure_email_status"] != expected:
             db.rollback()
@@ -67,6 +71,7 @@ def deliver_failure_notice(config, audit_id, retry=False, sender=None):
             failure_last_error=NULL WHERE id=?""", (json.dumps(actual), audit_id))
         attempt_id = db.execute("""INSERT INTO failure_email_attempts(audit_id,attempted_at,status,actual_recipients)
             VALUES(?,?,?,?)""", (audit_id, utcnow(), "started", json.dumps(actual))).lastrowid
+        event(db, "failure_notice.started", audit_id)
         db.commit()
     try:
         message_id = (sender or send_failure_email)(config, listing, audit_id, audit["issues"])

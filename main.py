@@ -37,14 +37,27 @@ class JsonFormatter(logging.Formatter):
 
 def main():
     parser = argparse.ArgumentParser(description="MLS Audit Desk")
-    parser.add_argument("command", choices=("inspect-bridge", "backfill-office-addresses", "run", "serve", "simulate"))
+    parser.add_argument("command", choices=("inspect-bridge", "backfill-office-addresses", "run", "serve", "simulate", "backup", "restore"))
+    parser.add_argument("--output", help="New backup destination")
+    parser.add_argument("--input", help="Backup to restore while the service is stopped")
+    parser.add_argument("--confirm", default="")
     args = parser.parse_args()
     load_dotenv()
     config = load_config()
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[handler])
-    if args.command == "inspect-bridge":
+    if args.command == "backup":
+        from audit_app.backup import backup
+        if not args.output:
+            parser.error("backup requires --output")
+        print(backup(config, args.output))
+    elif args.command == "restore":
+        from audit_app.backup import restore
+        if not args.input:
+            parser.error("restore requires --input")
+        print(restore(config, args.input, args.confirm))
+    elif args.command == "inspect-bridge":
         metadata = BridgeClient(config).inspect_metadata()
         report = {resource: {name: {"field": field, "type": metadata[resource][field]} for name, field in mapping.items()} for resource, mapping in config.field_map.items()}
         print(json.dumps(report, indent=2))
