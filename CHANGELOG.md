@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — brokerage cooldown setting
+
+- Add a protected brokerage office cooldown control under Admin → Selection settings, with a 0–365 day range and activity history.
+- Apply the saved value to future audit selections and record it in selection metadata; preserve the separate broker cooldown.
+- Migrate existing databases to schema version 3 without changing saved percentages or earlier audits.
+
 ## Unreleased — PDF pagination fix
 
 - Allow large brokerage groups to span PDF pages instead of failing with a layout error.

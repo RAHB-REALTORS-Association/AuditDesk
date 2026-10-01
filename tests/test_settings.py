@@ -9,7 +9,8 @@ from pathlib import Path
 from audit_app.config import load_config
 from audit_app.database import connect, init_db
 from audit_app.job import run_job
-from audit_app.settings import display_percent, save_selection_percent, selection_percent
+from audit_app.settings import (brokerage_cooldown_days, display_percent, save_brokerage_cooldown_days,
+                                save_selection_percent, selection_percent)
 from audit_app.web import render
 
 
@@ -17,15 +18,16 @@ NOW = datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
 
 
 class OneListing:
-    def __init__(self, number):
+    def __init__(self, number, office_id=None):
         self.number = number
+        self.office_id = office_id or "office-" + number
 
     def active_new_listings(self, start, end):
         yield {
             "listing_id": self.number, "mls_number": self.number, "status": "Active",
             "entry_timestamp": (NOW - timedelta(hours=1)).isoformat(), "address": "1 Example Street",
             "agent_name": "Example Agent", "agent_email": "agent@example.invalid",
-            "brokerage_id": "office-" + self.number, "brokerage_name": "Example Realty",
+            "brokerage_id": self.office_id, "brokerage_name": "Example Realty",
             "brokerage_email": "office@example.invalid", "broker_id": "broker-" + self.number,
             "broker_name": "Example Broker", "broker_email": "broker@example.invalid",
         }
@@ -63,6 +65,45 @@ class SelectionSettingsTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 save_selection_percent(self.config, value)
         self.assertEqual(selection_percent(self.config), Decimal("7.50"))
+
+    def test_saved_brokerage_cooldown_controls_future_runs_and_survives_restart(self):
+        self.assertEqual(brokerage_cooldown_days(self.config), 14)
+        save_selection_percent(self.config, "100")
+        self.assertEqual(run_job(self.config, OneListing("A", "same-office"), now=NOW)["selected"], 1)
+        save_brokerage_cooldown_days(self.config, "2")
+        self.assertEqual(run_job(self.config, OneListing("B", "same-office"),
+                                 now=NOW + timedelta(minutes=1))["selected"], 0)
+        save_brokerage_cooldown_days(self.config, "0")
+        restarted = replace(self.config, brokerage_cooldown_days=14)
+        self.assertEqual(brokerage_cooldown_days(restarted), 0)
+        self.assertEqual(run_job(restarted, OneListing("C", "same-office"),
+                                 now=NOW + timedelta(minutes=2))["selected"], 1)
+        with connect(self.config.database_path) as db:
+            metadata = json.loads(db.execute("SELECT selection_metadata FROM audits ORDER BY id DESC LIMIT 1").fetchone()[0])
+        self.assertEqual(metadata["brokerage_cooldown_days"], 0)
+        self.assertIn("0 days", render(restarted, "admin"))
+
+    def test_invalid_cooldowns_do_not_change_saved_value_or_percentage(self):
+        save_selection_percent(self.config, "7")
+        save_brokerage_cooldown_days(self.config, "21")
+        for value in ("", "-1", "1.5", "366", "1e2", "+1", "abc", "01"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                save_brokerage_cooldown_days(self.config, value)
+        self.assertEqual(brokerage_cooldown_days(self.config), 21)
+        self.assertEqual(selection_percent(self.config), Decimal("7"))
+
+    def test_version_two_database_gains_cooldown_setting_without_losing_rate(self):
+        save_selection_percent(self.config, "12")
+        with connect(self.config.database_path) as db:
+            db.execute("DROP TABLE brokerage_cooldown_settings")
+            db.execute("PRAGMA user_version=2")
+            db.commit()
+        init_db(self.config.database_path)
+        init_db(self.config.database_path)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 3)
+        self.assertEqual(selection_percent(self.config), Decimal("12"))
+        self.assertEqual(brokerage_cooldown_days(self.config), 14)
 
     def test_setting_does_not_reopen_ended_test_window(self):
         ended = replace(self.config, test_end_at=NOW - timedelta(seconds=1))

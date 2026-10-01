@@ -684,6 +684,10 @@ footer {
   max-width: 780px;
 }
 
+.admin-panel + .admin-panel {
+  margin-top: 20px;
+}
+
 .admin-content {
   padding: 20px;
 }

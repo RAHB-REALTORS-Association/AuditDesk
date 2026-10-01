@@ -74,7 +74,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Record audit result", "Mark this audit passed, or describe issues and review its failure notice."
         content = outcome_view(config, audit_id, form_values or "", error, preview_outcome)
     elif tab == "admin":
-        title, subtitle = "Admin", "Manage how many new listings are selected for audit."
+        title, subtitle = "Admin", "Manage listing selection and brokerage cooldown."
         content = admin_view(config, form_values, error)
     elif tab == "report":
         title, subtitle = "Daily audit report", "See listings considered and selected for audit by day."
