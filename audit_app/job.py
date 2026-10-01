@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .bridge import BridgeClient
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
-from .settings import selection_percent
+from .settings import brokerage_cooldown_days, selection_percent
 
 
 LOG = logging.getLogger("audit_app")
@@ -30,9 +30,10 @@ def job_lock(path):
         yield
 
 
-def choose_fairly(candidates, history, config, rng=random, rate=None):
+def choose_fairly(candidates, history, config, rng=random, rate=None, office_cooldown_days=None):
     """Binomial rate target, then weighted brokerage lottery with cooldowns."""
     rate = config.rate if rate is None else rate
+    office_cooldown_days = config.brokerage_cooldown_days if office_cooldown_days is None else office_cooldown_days
     target = sum(rng.random() < rate for _ in candidates)
     recent_offices = {r["brokerage_id"] for r in history if r["brokerage_id"] and r["office_recent"]}
     recent_brokers = {r["broker_id"] for r in history if r["broker_id"] and r["broker_recent"]}
@@ -54,7 +55,7 @@ def choose_fairly(candidates, history, config, rng=random, rate=None):
             "target": target,
             "eligible_brokerages_at_draw": len(offices),
             "brokerage_weight": "sqrt(new listings)",
-            "brokerage_cooldown_days": config.brokerage_cooldown_days,
+            "brokerage_cooldown_days": office_cooldown_days,
             "broker_cooldown_days": config.broker_cooldown_days,
         }))
         if listing["broker_id"]:
@@ -63,8 +64,9 @@ def choose_fairly(candidates, history, config, rng=random, rate=None):
     return selected
 
 
-def _recent_history(db, config, now):
-    office_cutoff = (now - timedelta(days=config.brokerage_cooldown_days)).isoformat(timespec="seconds")
+def _recent_history(db, config, now, office_cooldown_days=None):
+    office_cooldown_days = config.brokerage_cooldown_days if office_cooldown_days is None else office_cooldown_days
+    office_cutoff = (now - timedelta(days=office_cooldown_days)).isoformat(timespec="seconds")
     broker_cutoff = (now - timedelta(days=config.broker_cooldown_days)).isoformat(timespec="seconds")
     rows = db.execute("SELECT brokerage_id, broker_id, selected_at FROM audits WHERE selected_at >= ? OR selected_at >= ?", (office_cutoff, broker_cutoff)).fetchall()
     return [{"brokerage_id": row["brokerage_id"], "broker_id": row["broker_id"], "office_recent": row["selected_at"] >= office_cutoff, "broker_recent": row["selected_at"] >= broker_cutoff} for row in rows]
@@ -202,7 +204,9 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                         values["id"] = cursor.lastrowid
                         fresh.append(values)
                 rate = float(selection_percent(config, db) / 100)
-                selected = choose_fairly(fresh, _recent_history(db, config, now), config, rng, rate=rate)
+                office_cooldown_days = brokerage_cooldown_days(config, db)
+                selected = choose_fairly(fresh, _recent_history(db, config, now, office_cooldown_days),
+                                         config, rng, rate=rate, office_cooldown_days=office_cooldown_days)
                 audit_ids = []
                 for listing, metadata in selected:
                     try:

@@ -2,12 +2,13 @@
 import html
 
 from ..database import connect
-from ..settings import display_percent, selection_percent
+from ..settings import brokerage_cooldown_days, display_percent, selection_percent
 from .common import esc, retry_token
 
 
 def admin_view(config, value=None, error=""):
     current = display_percent(selection_percent(config))
+    cooldown = brokerage_cooldown_days(config)
     shown = current if value is None else value
     window_note = ("The live-data test has ended. Changing this percentage will not restart listing collection or email delivery."
                    if config.test_mode and not config.test_window_open() else "")
@@ -17,7 +18,12 @@ def admin_view(config, value=None, error=""):
         <form method="post" action="/admin/selection-rate" class="admin-rate-form"><input type="hidden" name="token" value="{retry_token(config, "selection-rate")}">
         <label for="rate-percent">Selection percentage</label><div class="rate-control"><input id="rate-percent" name="rate_percent" type="number" min="0" max="100" step="0.01" inputmode="decimal" required value="{html.escape(shown, quote=True)}"><span>%</span><button class="primary-button" type="submit">Save percentage</button></div></form>
         <p>Changes apply to future runs and new listings only. 0% pauses selection; 100% targets every eligible listing. Brokerage and broker cooldowns can reduce the final count.</p>
-        {f'<p class="admin-window-note">{window_note}</p>' if window_note else ''}</div></section>'''
+        {f'<p class="admin-window-note">{window_note}</p>' if window_note else ''}</div></section>
+        <section class="panel admin-panel"><div class="panel-head"><div><h2>Brokerage cooldown</h2><p>Wait before selecting another listing from the same brokerage office.</p></div></div>
+        <div class="admin-content"><div class="admin-current"><span>Current cooldown</span><strong>{cooldown} {"day" if cooldown == 1 else "days"}</strong></div>
+        <form method="post" action="/admin/brokerage-cooldown" class="admin-rate-form"><input type="hidden" name="token" value="{retry_token(config, "brokerage-cooldown")}">
+        <label for="cooldown-days">Cooldown period</label><div class="rate-control"><input id="cooldown-days" name="cooldown_days" type="number" min="0" max="365" step="1" inputmode="numeric" required value="{cooldown}"><span>days</span><button class="primary-button" type="submit">Save cooldown</button></div></form>
+        <p>Changes apply to future selections only. 0 days removes the waiting period between runs; each office can still be selected only once per run.</p></div></section>'''
 
 
 

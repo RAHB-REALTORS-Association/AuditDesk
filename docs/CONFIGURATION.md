@@ -63,10 +63,10 @@ The map in [`bridge_fields.json`](../bridge_fields.json) describes the `itso` fi
 | --- | --- | --- |
 | `AUDIT_RATE` | `0.05` | Starting probability from `0` to `1`; saved manager percentage takes precedence |
 | `LISTING_WINDOW_HOURS` | `24` | Initial positive intake window; later runs extend it for catch-up |
-| `BROKERAGE_COOLDOWN_DAYS` | `14` | Nonnegative brokerage cooldown |
+| `BROKERAGE_COOLDOWN_DAYS` | `14` | Starting office cooldown; saved Admin setting of 0–365 whole days takes precedence |
 | `BROKER_COOLDOWN_DAYS` | `14` | Nonnegative broker cooldown |
 
-Managed selection changes affect future new listings only. They do not reselect earlier records or reopen a test window. A 100% target does not bypass cooldowns or per-run broker/brokerage limits.
+Managed selection percentage and brokerage cooldown changes affect future new listings only. They do not reselect earlier records or reopen a test window. A 100% target does not bypass cooldowns or per-run broker/brokerage limits. A zero-day office cooldown removes the between-run wait; it does not remove the one-selection-per-office-per-run limit or the separate broker cooldown.
 
 ## Email wording and merge tags
 

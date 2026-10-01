@@ -51,7 +51,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 2 initializes transactionally. It replaces the development-only reviewer roster and its assignments with an `assignee_user_id` foreign key to application accounts. Initialization supports baseline/version-1 databases, drops the obsolete roster fields/table, and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 3 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2 databases, preserves the saved selection percentage, and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 

@@ -76,9 +76,11 @@ For bulk assignment, select audit rows with their checkboxes, or use the heading
 The **Work status** column shows **Not started** when no one is assigned, **In progress** when an eligible account is assigned, **Needs reassignment** when that account is unavailable, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email or change results. Bulk changes save together: an invalid account, missing audit, or stale form rejects the whole batch. Each changed audit records the authenticated actor in the activity log.
 
 
-## Change the audit selection percentage
+## Change selection settings
 
-Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. Audit managers and IT administrators can change selection settings.
+Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the audit database; `AUDIT_RATE` is the starting value until a manager saves a percentage.
+
+The **Brokerage cooldown** control sets how many whole days must pass before another listing from the same brokerage office can be selected. Choose 0–365 days; 0 removes the wait between runs, while the existing one-selection-per-office-per-run limit still applies. The saved value applies to future selections and does not change earlier audits. `BROKERAGE_COOLDOWN_DAYS` supplies the starting value until a manager saves a cooldown. The broker cooldown remains a separate configuration setting. Audit managers and IT administrators can change these settings.
 
 
 ## Review daily audit volume

@@ -94,7 +94,7 @@ python main.py restore --input /app/data/backups/auditdesk-YYYYMMDD.sqlite3 --co
 
 Restore refuses a running service, checks integrity, foreign keys and supported schema, prepares a temporary database, preserves administrator access, saves a pre-restore backup, and replaces the database atomically. Files above 512 MiB are rejected. Resume the service and verify login and record counts. Restore rolls back all data to the backup time, so newer changes can be lost.
 
-Schema version 2 initializes a fresh database transactionally and accepts baseline/version-1 databases. The development-only audit roster and its assignments are discarded; account assignments use application user IDs. Existing audit results remain intact. No original installation data migration is required for this project. Newer unknown schema versions are rejected. Version-1 application images cannot open version-2 databases.
+Schema version 3 initializes a fresh database transactionally and accepts baseline/version-1/version-2 databases. Version 2 discarded the development-only audit roster and moved assignments to application user IDs; version 3 adds the managed brokerage cooldown while preserving the saved selection percentage and audit results. Until a manager saves a cooldown, the configured `BROKERAGE_COOLDOWN_DAYS` remains effective. Back up staging before upgrading. Newer unknown schema versions are rejected; version-2 images cannot open version-3 databases, so rollback requires a compatible image or the pre-upgrade backup.
 
 ## Releases and rollback
 

@@ -107,7 +107,7 @@ class FoundationTests(unittest.TestCase):
         self.assertNotIn('Selection settings',r.text)
         for page in ('users','activity','admin','template'):
             self.assertEqual(self.get('/?tab='+page,role='reviewer').status_code,403)
-        for path,form in (('/users',{}),('/admin/selection-rate',{'rate_percent':'100'}),('/assignment/1',{}),('/assignments',{'audit_ids':['1'],'assignee_user_id':'2'}),('/template',{})):
+        for path,form in (('/users',{}),('/admin/selection-rate',{'rate_percent':'100'}),('/admin/brokerage-cooldown',{'cooldown_days':'7'}),('/assignment/1',{}),('/assignments',{'audit_ids':['1'],'assignee_user_id':'2'}),('/template',{})):
             self.assertEqual(self.post(path,form,role='reviewer').status_code,403)
         self.assertEqual(self.get('/?tab=users',role='manager').status_code,403)
         self.assertEqual(self.get('/?tab=template',role='manager').status_code,200)
@@ -174,6 +174,11 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.post('/admin/selection-rate',{'rate_percent':'x'*40000}).status_code,413)
         response=self.post('/admin/selection-rate',{'rate_percent':'7'})
         self.assertEqual(response.status_code,303,response.text)
+        response=self.post('/admin/brokerage-cooldown',{'cooldown_days':'21'},role='manager',page='/?tab=admin')
+        self.assertEqual(response.status_code,303,response.text)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT days FROM brokerage_cooldown_settings').fetchone()[0],21)
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='selection.brokerage_cooldown_updated'").fetchone()[0],'manager')
         with connect(self.config.database_path) as db:
             row=db.execute("SELECT * FROM activity_events WHERE action='selection.updated'").fetchone()
             self.assertEqual(row['actor'],'admin')
@@ -244,7 +249,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),2)
+        self.assertEqual(validate(file),3)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -269,7 +274,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)
