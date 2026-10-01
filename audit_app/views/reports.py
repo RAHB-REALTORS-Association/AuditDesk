@@ -10,7 +10,7 @@ def report_view(config):
     total = sum(row["listings"] for row in daily)
     audited = sum(row["audited"] for row in daily)
     overall = f"{100 * audited / total:.1f}%" if total else "—"
-    shown, page = paginate_records('report', daily, lambda row: str(row['date']) + ' ' + row['status'], lambda row: row['status'])
+    shown, page = paginate_records('report', daily, lambda row: row['date'].strftime('%b %d, %Y') + ' ' + str(row['date']) + ' ' + row['status'], lambda row: row['status'])
     rows = ""
     for row in shown:
         recorded = row["status"] in {"Recorded", "Run had errors"} or bool(row["listings"])
@@ -18,6 +18,8 @@ def report_view(config):
         selected = str(row["audited"]) if recorded else "—"
         percentage = f'{row["percentage"]:.1f}%' if row["percentage"] is not None else "—"
         rows += f'<tr><td><strong>{row["date"].strftime("%b %d, %Y")}</strong></td><td>{listings}</td><td>{selected}</td><td>{percentage}</td><td>{badge(row["status"].lower().replace(" ", "_"))}</td></tr>'
+    if not rows:
+        rows = '<tr><td colspan="5" class="empty">No days match these filters.</td></tr>'
     return f'''<section class="report-summary"><div><span>Listings considered</span><strong>{total}</strong></div>
         <div><span>Audited</span><strong>{audited}</strong></div><div><span>Audit percentage</span><strong>{overall}</strong></div></section>
         <section class="panel report-panel"><div class="panel-head"><div><h2>Daily audit report</h2><p>Past 90 days, newest first</p></div></div>
@@ -86,4 +88,3 @@ def brokerage_view(config, period):
         <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerages</p></div></div>
         <div class="report-note">Branches with the same brokerage name are combined. Select “View branches” to see each office address and its statistics. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
         {page.filters()}<div class="table-wrap"><table data-server-list data-columns="brokerages" class="brokerage-table" data-sortable data-sort-groups><thead><tr>{headings}</tr></thead>{rows}</table></div>{page.footer()}</section>'''
-

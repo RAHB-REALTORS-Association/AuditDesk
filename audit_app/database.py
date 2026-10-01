@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS failure_email_attempts (
 );
 CREATE INDEX IF NOT EXISTS idx_audits_brokerage ON audits(brokerage_id, selected_at);
 CREATE INDEX IF NOT EXISTS idx_audits_broker ON audits(broker_id, selected_at);
+CREATE INDEX IF NOT EXISTS idx_audits_selected_at ON audits(selected_at);
 """
 
 

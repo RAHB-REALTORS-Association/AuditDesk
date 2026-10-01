@@ -59,6 +59,7 @@ def activity_view(config):
         events, page = query_page(db, 'activity', """SELECT e.*,u.email FROM activity_events e
             LEFT JOIN app_users u ON u.subject=e.actor""", ('email','actor','action','target','detail'), 'action',
             {'Time (UTC)':'occurred_at','Actor':'actor','Action':'action','Target':'target','Details':'detail'}, 'id')
+        page.facet_label = 'Action'
     rows = "".join(f'<tr><td>{esc(e["occurred_at"])}</td><td>{esc(e["email"] or e["actor"])}</td><td>{esc(e["action"])}</td><td>{esc(e["target"])}</td><td>{esc(e["detail"])}</td></tr>' for e in events)
     headings = ''.join(sort_heading(label) for label in ('Time (UTC)','Actor','Action','Target','Details'))
     return f'<section class="panel"><div class="panel-head"><h2>Activity history</h2><a href="/activity.csv">Export CSV</a></div>{page.filters()}<div class="table-wrap"><table data-server-list data-columns="activity"><thead><tr>{headings}</tr></thead><tbody>' + (rows or '<tr><td colspan="5">No changes match these filters.</td></tr>') + f'</tbody></table></div>{page.footer()}</section>'

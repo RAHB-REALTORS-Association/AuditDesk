@@ -12,6 +12,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/application.py` | Flask app factory, identity/request guards, authorization, routes, mutation orchestration, exports, errors, and response headers |
 | `audit_app/runtime.py` | Service lock, interrupted-work recovery, optional scheduler, local HTTP startup |
 | `audit_app/web.py` | Page composition, navigation, tab capability map, history queries, and form revisions |
+| `audit_app/lists.py` | Validated page sizes, parameterized filters, sorting, and shared list controls |
 | `audit_app/views/common.py` | Escaping, local time, status badges, sort headings, recipients, and CSRF form tokens |
 | `audit_app/views/workflow.py` | Audit result forms and failed-notice previews |
 | `audit_app/views/management.py` | Selection settings, access management, and activity views |
@@ -34,7 +35,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `job.py` | Active intake window, fair selection/cooldowns, duplicate prevention, request delivery and retries |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
 | `outcomes.py` | Single-assignment results and failure-notice delivery |
-| `assignment.py`, `settings.py` | Individual/bulk account assignments and managed selection percentage |
+| `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
 | `backup.py` | Consistent online backup and validated offline restore |
@@ -51,7 +52,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 4 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3 databases, preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 4 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 

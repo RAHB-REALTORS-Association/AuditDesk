@@ -7,10 +7,13 @@ if (bulkForm) {
   const count = bulkForm.querySelector('[data-selection-count]');
   const key = `auditdesk.selected.v1.${bulkForm.dataset.owner}`;
   let selected = new Set();
-  try {
-    const stored = JSON.parse(sessionStorage.getItem(key));
-    if (Array.isArray(stored)) selected = new Set(stored.filter((id) => /^\d+$/.test(id)).slice(0, 200));
-  } catch { /* Selection still works without browser storage. */ }
+  function readSelection() {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem(key));
+      if (Array.isArray(stored)) selected = new Set(stored.filter((id) => /^\d+$/.test(id)).slice(0, 200));
+    } catch { /* Selection still works without browser storage. */ }
+  }
+  readSelection();
   if ((new URLSearchParams(location.search).get('notice') || '').startsWith('Assignment updated for ')) selected.clear();
 
   function updateSelection() {
@@ -54,6 +57,7 @@ if (bulkForm) {
     if (!selected.size) event.preventDefault();
   });
   window.addEventListener('pageshow', () => {
+    readSelection();
     boxes.forEach((box) => { box.checked = selected.has(box.value); }); updateSelection();
   });
   updateSelection();

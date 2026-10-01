@@ -1,10 +1,16 @@
 # Changelog
 
-## Unreleased — brokerage cooldown setting
+## Unreleased — Manage, list controls, and delivery visibility
 
-- Add a protected brokerage office cooldown control under Admin → Selection settings, with a 0–365 day range and activity history.
-- Apply the saved value to future audit selections and record it in selection metadata; preserve the separate broker cooldown.
-- Migrate existing databases to schema version 3 without changing saved percentages or earlier audits.
+- Group selection settings, request/failure email wording, and account access under one role-aware Manage workspace.
+- Persist brokerage office cooldown, broker cooldown, and initial listing window; apply validated business settings to future runs and record changes in activity history.
+- Upgrade to schema version 4 additively, preserving saved selection percentages, office cooldowns, and audit data from version 3.
+- Combine search, status filters, and column visibility in one compact list control.
+- Add row counts and First/Previous/Next/Last controls to all six table views; search and sort complete matching histories beyond the former recent-record limits.
+- Keep brokerage branches together and retain bulk selections across pages, filters, sorting, and browser Back navigation; exports keep their existing scope.
+- Remove the sidebar's daily-selection timezone footer.
+- Include recipient-validation failures in scheduled run email error summaries; surface unresolved errors on older completed runs and distinguish pending mail.
+- Keep completed intake from being repeated merely because a notification failed.
 
 ## Unreleased — PDF pagination fix
 
@@ -65,23 +71,3 @@
 - Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access authenticates test/production; development is an open synthetic sandbox. Email delivery now defaults to disabled in configuration as well as containers.
 
 - Disposable development/PR previews: seeded synthetic audits, fixed demo identity, ignored integration credentials, hard Bridge/email guards, no scheduler or volume, and retained form protection.
-
-## PR 3 — run delivery visibility
-
-- Include recipient-validation failures in the scheduled run's email error summary.
-- Surface unresolved email errors on older completed runs, and distinguish pending mail when delivery is disabled.
-- Keep completed intake from being repeated merely because a notification failed.
-
-## PR 3 — list navigation
-
-- Combine search, status filters, and column visibility in one compact list control.
-- Add selectable row counts and First/Previous/Next/Last controls to all six table views; remove fixed recent-record cutoffs.
-- Sort and search full matching histories, preserve brokerage groups and bulk selections across pages, and retain full export scope.
-- Remove the sidebar's daily-selection timezone footer.
-
-## PR 3 — Manage workspace
-
-- Consolidate selection, request/failure email wording, and account access under one Manage navigation entry, with role-specific sections.
-- Persist broker cooldown and initial listing window as managed business settings; validate changes and record the actor in activity history.
-- Read saved workflow settings on future runs without restart while keeping integration credentials and live-delivery safeguards in the environment.
-- Upgrade to schema version 4 additively, preserving version-3 saved settings and existing audit data.

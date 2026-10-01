@@ -17,6 +17,7 @@ class ListPage:
     statuses: tuple = ()
     total: int = 0
     choices: tuple = ()
+    facet_label: str = 'Status'
 
     @classmethod
     def read(cls, tab):
@@ -65,7 +66,7 @@ class ListPage:
         reset = '/?' + urlencode([('tab', self.tab)] + [(key, value) for key, value in self.params() if key == 'period'])
         return f'''<form class="list-filters" method="get" action="/">{preserved}
             <h3>Filters</h3><label>Search records<input type="search" name="q" maxlength="200" value="{esc(self.query) if self.query else ''}"></label>
-            {f'<fieldset><legend>Status</legend><div class="filter-choices">{choices}</div></fieldset>' if choices else ''}
+            {f'<fieldset><legend>{esc(self.facet_label)}</legend><div class="filter-choices">{choices}</div></fieldset>' if choices else ''}
             <div class="filter-actions"><button type="submit" class="primary-button">Apply filters</button><a href="{esc(reset)}">Clear filters</a></div></form>'''
 
     def footer(self):
