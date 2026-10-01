@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — email editor fix
+
+- Replace the message-body backing textarea with a native hidden input so only the rich editor is visible.
+
 ## Unreleased — mobile navigation icons
 
 - Replace mobile menu text with hamburger and close icons, retaining accessible labels and 44px touch targets.
