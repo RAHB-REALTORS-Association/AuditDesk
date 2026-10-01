@@ -17,6 +17,7 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
 from . import web
+from .views.errors import error_page
 from .assignment import assign_audits, assign_reviewer
 from .backup import MAX_BACKUP_BYTES, backup, stage_restore
 from .brokerage_report import PERIODS, brokerage_statistics
@@ -127,16 +128,20 @@ def create_app(config=None, verifier=None):
 
     @app.errorhandler(HTTPException)
     def http_error(error):
-        return f'<h1>{error.code} — {web.esc(error.name)}</h1><p>{web.esc(error.description)}</p><p><a href="/">Return to AuditDesk</a></p>', error.code
+        title = {401: 'Sign-in required', 403: 'Access denied', 404: 'Page not found',
+                 409: 'Refresh before saving', 413: 'File or form too large', 429: 'Too many requests'}.get(error.code, error.name)
+        return error_page(error.code, title, str(error.description), getattr(g, 'request_id', '')), error.code
 
     @app.errorhandler(ValueError)
     def invalid(error):
-        return f'<h1>Change not saved</h1><p>{web.esc(str(error))}</p><p>Use Back to keep your form, or <a href="/">return to AuditDesk</a>.</p>', 400
+        return error_page(400, 'Change not saved', str(error), getattr(g, 'request_id', ''),
+                          'Use your browser’s Back button to keep your form and correct it.'), 400
 
     @app.errorhandler(Exception)
     def unexpected(error):
         logging.getLogger("audit_app").error("request_failed request_id=%s type=%s", getattr(g, "request_id", ""), type(error).__name__)
-        return '<h1>Something went wrong</h1><p>Your request could not be completed. Contact IT with request ID ' + web.esc(getattr(g, "request_id", "")) + '.</p>', 500
+        return error_page(500, 'Something went wrong', 'Your request could not be completed. Contact IT with the request ID below.',
+                          getattr(g, 'request_id', '')), 500
 
     @app.get("/healthz")
     def health():

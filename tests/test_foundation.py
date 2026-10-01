@@ -70,6 +70,27 @@ class FoundationTests(unittest.TestCase):
         return client.post(path, data=data, base_url=self.config.public_url,
                            headers={'Cf-Access-Jwt-Assertion':self.token(role), 'Origin':self.config.public_url, **headers})
 
+    def test_errors_are_styled_without_authenticated_assets_and_escape_content(self):
+        from audit_app.views.errors import error_page
+        for response, status in ((self.client.get('/'),401),
+                                 (self.get('/?tab=users',role='reviewer'),403),
+                                 (self.get('/not-a-page'),404),
+                                 (self.post('/manage/selection',{}),400)):
+            self.assertEqual(response.status_code,status)
+            self.assertIn('<!doctype html>',response.text)
+            self.assertIn('<style>',response.text)
+            self.assertIn('error-card',response.text)
+            self.assertIn('Return to AuditDesk',response.text)
+            self.assertNotIn('src="/static/',response.text)
+            self.assertEqual(response.headers['Cache-Control'],'no-store')
+            self.assertIn(response.headers['X-Request-ID'],response.text)
+        self.assertIn('&lt;script&gt;',error_page(400,'Bad','<script>'))
+        with patch('audit_app.application.web.render',side_effect=RuntimeError('private internals')):
+            response=self.get()
+        self.assertEqual(response.status_code,500)
+        self.assertIn('error-card',response.text)
+        self.assertNotIn('private internals',response.text)
+
     def test_authentication_fails_closed_and_health_is_public(self):
         self.assertEqual(self.client.get('/healthz').status_code,200)
         for path in ('/', '/static/app.css', '/reports/brokerages.pdf'):

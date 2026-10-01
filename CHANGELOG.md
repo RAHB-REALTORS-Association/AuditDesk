@@ -83,3 +83,5 @@
 - Add a manual Asana follow-up handoff for recorded failed audits: prefilled task draft, complete copyable details, and optional saved task link. No API credentials or synchronization. Schema 5 adds the optional task URL while preserving existing data.
 
 - Make Asana task creation a visible action on failed audit rows, with a separate link for saving task URLs/copying details. Recording a failure opens its follow-up page immediately.
+
+- Style access-denied, validation, missing-page, and server errors with a consistent standalone AuditDesk page, return action, and request ID. Styling works before authentication without exposing application assets.
