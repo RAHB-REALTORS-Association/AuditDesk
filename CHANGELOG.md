@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — repository organization
+
+- Add the MIT license and contributor licensing guidance.
+- Separate CLI commands from the compatibility launcher; add the equivalent `python -m audit_app` entry point.
+- Split HTML components into helpers, workflow, management, email, and report views; move local HTTP startup into runtime and the email editor script into static assets.
+- Rewrite the README with a product overview, quick start, environment comparison, module map, and documentation links.
+- Expand the staff guide and add architecture, configuration, contribution, and private security-reporting docs, plus a pull request template.
+- Preserve the original handoff as historical project context and focus contributor instructions on current development rules.
+
 ## Unreleased — deployment foundation
 
 - Cloudflare Access JWT authentication and application-owned Reviewer, Audit manager, and IT administrator roles.

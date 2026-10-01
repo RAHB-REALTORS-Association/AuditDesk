@@ -17,6 +17,22 @@ from audit_app.runtime import start_runtime
 
 
 class DevelopmentTests(unittest.TestCase):
+    def test_all_staff_views_and_email_editor_asset_are_available(self):
+        app = self.app()
+        client = app.test_client()
+        for tab in ('audits', 'listings', 'runs', 'simulation', 'reviewers', 'admin',
+                    'template', 'failure_template', 'report', 'brokerages', 'users', 'activity'):
+            with self.subTest(tab=tab):
+                response = client.get('/?tab=' + tab)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b'DEVELOPMENT SANDBOX', response.data)
+                if tab in ('template', 'failure_template'):
+                    self.assertIn(b'/static/template-editor.js', response.data)
+        asset = client.get('/static/template-editor.js')
+        self.addCleanup(asset.close)
+        self.assertEqual(asset.status_code, 200)
+        self.assertIn(b'hiddenBody.value = editor.innerHTML', asset.data)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

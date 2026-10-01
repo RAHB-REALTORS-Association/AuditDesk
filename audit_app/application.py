@@ -18,6 +18,7 @@ from werkzeug.exceptions import HTTPException
 
 from . import web
 from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
+from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import connect, init_db
 from .job import deliver_audit
@@ -103,7 +104,7 @@ def create_app(config=None, verifier=None):
         response.headers.update({"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                                  "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
                                  "X-Request-ID": getattr(g, "request_id", "")})
-        # Inline code is legacy template editor code; no external script sources are allowed.
+        # Legacy inline event handlers remain; no external script sources are allowed.
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         if urlparse(config.public_url).scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -143,7 +144,7 @@ def create_app(config=None, verifier=None):
                     if not db.execute("SELECT 1 FROM audits WHERE id=?", (int(audit_id),)).fetchone():
                         abort(404)
             period = request.args.get("period", "3m")
-            if period not in web.PERIODS:
+            if period not in PERIODS:
                 abort(400, "Invalid report period.")
             return web.render(config, tab, notice=request.args.get("notice", ""), audit_id=int(audit_id) if tab == "outcome" else None, period=period)
         return page()
@@ -248,9 +249,9 @@ def create_app(config=None, verifier=None):
     def pdf():
         from .brokerage_pdf import build_brokerage_pdf
         period = request.args.get("period", "3m")
-        if period not in web.PERIODS:
+        if period not in PERIODS:
             abort(400, "Invalid report period.")
-        return Response(build_brokerage_pdf(web.brokerage_statistics(config, period)), mimetype="application/pdf",
+        return Response(build_brokerage_pdf(brokerage_statistics(config, period)), mimetype="application/pdf",
                         headers={"Content-Disposition": f'attachment; filename="auditdesk-brokerages-{period}.pdf"'})
 
     @app.get("/activity.csv")

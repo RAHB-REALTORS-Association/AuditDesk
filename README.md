@@ -1,12 +1,53 @@
-# MLS Audit Desk
+# AuditDesk
 
-A small internal application for selecting new Active Bridge listings for paperwork audits. The daily job records every listing considered, uses a configurable selection lottery, applies brokerage and broker cooldowns, then sends selected requests through SendGrid. The staff page shows audit history and failed-email retries.
+AuditDesk is Cornerstone's internal MLS paperwork audit application. It selects new Active listings from Bridge, requests paperwork through SendGrid, and gives staff one place to assign reviews, record results, and report on audit activity.
 
-See [Deployment](docs/DEPLOYMENT.md) for Coolify, Cloudflare Access, backup, and releases; [Roles and workflows](docs/USER_GUIDE.md) for staff instructions.
+It runs as one Python service with SQLite and a persistent volume. Cloudflare Access authenticates staff; AuditDesk manages their roles and records their changes.
 
-## Start the staff interface
+## What it does
 
-The server listens on **127.0.0.1:8765**. Development opens directly at that address with synthetic listings and a disposable database:
+- Imports new Active listings and records every listing considered
+- Selects audits using a configurable lottery, brokerage balancing, and broker/brokerage cooldowns
+- Sends audit requests and failed-audit notices, with delivery history and controlled retries
+- Assigns reviewers and tracks work from not started to completed
+- Edits and previews request and failure email templates
+- Reports daily volume and brokerage results, including branded PDF exports
+- Manages application access and exports authenticated activity history
+- Supports consistent database backups and validated offline restore
+- Provides disposable development and PR previews with synthetic data
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    Bridge[Bridge MLS API] -->|Active listing intake| App[AuditDesk]
+    Staff[Staff browser] -->|Cloudflare Access identity| App
+    App --> DB[(SQLite on persistent volume)]
+    App -->|Requests and failure notices| SendGrid[SendGrid]
+```
+
+The daily job draws a selection target from new listings, applies cooldowns, and balances eligible brokerages using square-root listing-volume weights. Each brokerage and broker can be selected at most once per run. Audits are saved before delivery, and repeated intake does not create duplicate requests. Cooldowns can reduce the count below the target.
+
+## Roles
+
+| Role | Responsibilities |
+| --- | --- |
+| Reviewer | Review audits, record results, retry failed mail, and read/export reports |
+| Audit manager | Reviewer work plus assignments, reviewer roster, selection settings, and email templates |
+| IT administrator | Manager work plus application access and activity export |
+
+The reviewer roster assigns responsibility for audits. Login access is managed separately. See the [staff guide](docs/USER_GUIDE.md) for everyday workflows.
+
+## Requirements
+
+- Python 3.14 for local development, or Docker for the deployment runtime
+- Bridge and SendGrid credentials for live intake and delivery
+- Cloudflare Access and an HTTPS origin for test/production
+- One application instance and a persistent `/app/data` mount for test/production
+
+## Quick start for development
+
+Run from the repository root. Reuse an existing virtual environment when available; otherwise create `.venv`:
 
 ```sh
 python3 -m venv .venv
@@ -16,80 +57,82 @@ cp .env.example .env
 python main.py serve
 ```
 
-On Windows, activate with `.venv\Scripts\Activate.ps1`, or use Docker for the same Linux runtime as deployment.
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On Windows, activate with `.venv\Scripts\Activate.ps1`, or use Docker.
 
-`APP_ENV=development` is an open sandbox with a fixed demo administrator. It seeds four synthetic audits; fixture delivery records are simulated, never sent. Every startup creates a fresh temporary database, ignoring `DATABASE_PATH`, Bridge/SendGrid credentials, Access settings, real administrator addresses, session keys, test cutoffs, and email/scheduler enable flags. Real Bridge clients and email delivery are also blocked at their final boundaries. Form protection remains enabled. No Basic Auth exists.
+Development opens as a demo administrator with four synthetic audits. It ignores integration credentials and live storage settings, blocks real intake and mail, and resets its temporary database on every startup. Use **Simulation** in the sidebar, or `python main.py simulate`, to demonstrate selection, delivery failure, duplicate prevention, and retry without external calls.
 
-`APP_ENV=test` uses real Bridge listings and Cloudflare Access, and redirects enabled email exclusively to `ADMIN_EMAIL`. `APP_ENV=production` requires Cloudflare Access and sends enabled mail to actual recipients. Both modes use persistent storage and require issuer, audience, public HTTPS origin and bootstrap application administrator configuration.
+`python -m audit_app` provides the same commands as `python main.py`. See [Contributing](CONTRIBUTING.md) for verification and the command reference.
 
-PR previews use `auditdesk-pr{{pr_id}}.oncornerstone.app`, development mode and no persistent volume. Set preview-only `PUBLIC_BASE_URL=auto` so the app derives the HTTPS browser origin from Coolify's generated `COOLIFY_URL`. Local development uses `PUBLIC_BASE_URL=http://127.0.0.1:8765`. Preview edits reset on restart.
+## Environments and configuration
 
-For a time-limited live-data test, set `APP_ENV=test` and `TEST_MODE_END_AT` to an ISO 8601 timestamp with an offset, such as `2026-09-28T00:00:00-04:00`. Once that time passes, scheduled runs record `test_window_closed` without querying Bridge, and both scheduled and manual email sends are blocked. Scheduling can be disabled independently with `SCHEDULER_ENABLED=false`.
+| `APP_ENV` | Identity | Data and delivery |
+| --- | --- | --- |
+| `development` | Fixed demo administrator; open sandbox | Temporary synthetic data; live integrations blocked |
+| `test` | Cloudflare Access and application roles | Persistent live listings; enabled mail redirected only to `ADMIN_EMAIL` |
+| `production` | Cloudflare Access and application roles | Persistent live listings; enabled mail sent to actual recipients |
 
-## Edit the audit email
+Email and scheduling default to disabled. Environment variables override `.env` values for CLI commands. Gunicorn reads the process environment directly; configure container runtime variables through the deployment platform.
 
-Open **Admin → Audit request email** in the staff sidebar. Edit the subject and body, use the `{{merge_tags}}` buttons to insert listing details, and select **Preview changes** to review the rendered message without saving or sending. Select **Save template** when it is ready. The saved wording is stored in the audit database and applies to future scheduled sends and manual retries without restarting the app. Previously sent emails are unchanged.
+Start with [.env.example](.env.example). The [configuration reference](docs/CONFIGURATION.md) explains defaults, required settings, template tags, and preview origins. Secrets belong in the platform's masked runtime settings.
 
-Select text in the message body and use **B**, **I**, or **U** to apply bold, italic, or underline. Preview shows the formatted email. SendGrid receives both a formatted HTML body and a readable plain-text version. Existing saved plain-text templates remain editable and are converted to the rich editor when next saved.
+## Deployment and recovery
 
-Available merge tags are `{{mls_number}}`, `{{address}}`, `{{agent_name}}`, `{{brokerage_name}}`, `{{broker_name}}`, and `{{broker_first_name}}`. The broker's first name comes from Bridge `MemberFirstName`. Older saved listings use the first name from `MemberFullName` when available. The body must contain the first four tags so every request identifies the listing and agent. An unknown or incomplete tag is rejected before saving. The editor shows the test-mode recipient diagnostic in its preview while TEST MODE is active.
+Coolify builds the [Dockerfile](Dockerfile), serves port `8765`, and probes `GET /healthz` inside the container. The image runs as UID/GID `10001` and uses one Gunicorn worker. Preserve `/app/data` through upgrades and stop the old instance before starting its replacement.
 
-## Record an audit result
+PR previews use development mode and disposable storage. Test/production use Cloudflare Access and persistent storage. Follow the [deployment guide](docs/DEPLOYMENT.md) for configuration, backups, restore, releases, and rollback.
 
-After the original request email is accepted, open **Record result** on its Audit history row. **Mark passed** records a pass without sending another email. For a failed audit, enter the issues, select **Preview failed notice** to review the rendered message and recipients, then select **Record fail and send notice**. The issues are saved with the audit and included through the `{{issues}}` merge tag. Each audit can receive one result, preventing duplicate failed-audit notices from repeated submissions.
+## Repository layout
 
-Edit the follow-up wording under **Admin → Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit history without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
+```text
+audit_app/
+  application.py   Flask routes, request guards, and mutation orchestration
+  cli.py           CLI commands and environment-file loading
+  runtime.py       Single-instance startup and daily scheduler
+  web.py           Page composition and navigation
+  views/           HTML helpers, workflow, management, email, and report views
+  static/          Styles, browser scripts, and branding
+  *.py             Audit workflow, integrations, storage, identity, and reporting
+docs/              Staff, developer, configuration, and operator guides
+scripts/           Container verification tools
+tests/             Synthetic workflow and HTTP regression tests
+.github/           CI, image release workflow, and pull request template
+main.py            Existing CLI entry point
+bridge_fields.json Bridge dataset field mappings
+```
 
-## Track who is working on an audit
+The [architecture guide](docs/ARCHITECTURE.md) maps the modules, data ownership, and delivery lifecycle.
 
-Open **Admin → Audit team** to add names, correct a name, remove a name from future assignments, or delete its roster entry. **Remove from list** can be undone. **Delete** removes the name from the roster and frees it for reuse; an unfinished audit assigned to that person shows **Needs reassignment** and retains the former name for context. Completed audits keep their result and former assignee name. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The roster controls work assignment. The authenticated user who makes a change is recorded separately in the activity log.
+## Verification
 
-## Change the audit selection percentage
+With the project virtual environment activated:
 
-Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. Audit managers and IT administrators can change selection settings.
+```sh
+python -m unittest discover -s tests
+docker build -t auditdesk:local .
+python scripts/container_smoke.py auditdesk:local
+```
 
-## Review daily audit volume
+Tests use temporary databases and mocked integrations. Container checks cover readiness, denied unauthenticated access, persistent data after restart, and disposable previews. Pull requests run tests, container checks, and dependency auditing. Version tags publish multi-architecture images to GHCR.
 
-Open **Admin → Daily audit report** for the past 90 local calendar days. It shows the number of unique new Active listings first processed by the app each day, how many were selected for audit, and the audited percentage. Manual test runs are included. Days with no completed run show unavailable values rather than a misleading zero; a completed run that found no new listings shows zero. The report is calculated from the persistent listing, audit, and run records, so it survives dashboard restarts. It does not represent all listings in the MLS if the app missed a daily intake.
+## Operational limits
 
-## Review brokerage statistics
+Reports describe listings this application has processed, not the complete MLS. Intake resumes from the last successful boundary after downtime, but listings that have become inactive remain excluded. History pages show the latest 200 listings/audits and 50 runs.
 
-Open **Admin → Brokerage statistics** to compare brokerages for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the brokerage has a completed audit. Branches with the same brokerage name (ignoring capitalization and extra spaces) are combined into one row, with their counts and rates calculated together. Select **View branches** to see each office's Bridge profile address and its own counts and rates; brokerage rows remain grouped while sorting. Listings without a brokerage name retain their Bridge office ID as a separate group. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period, including all branch addresses. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. Install PDF support with `python3 -m pip install -r requirements.txt` in the Python environment that runs the dashboard.
+SendGrid acceptance does not confirm inbox delivery. Unknown delivery is never automatically retried because the provider may already have accepted the message. SQLite and file locks require one service instance per database.
 
-For a database created before office addresses were saved, run `python3 main.py backfill-office-addresses` once to retrieve the current Bridge Office profile addresses for existing listings. This command only updates local addresses; it does not select audits or send emails. New listings save the address automatically.
+## Documentation
 
-## Simulate a full cycle
+- [Documentation index](docs/README.md)
+- [Staff and manager guide](docs/USER_GUIDE.md)
+- [Deployment, backup, and recovery](docs/DEPLOYMENT.md)
+- [Configuration reference](docs/CONFIGURATION.md)
+- [Architecture and module boundaries](docs/ARCHITECTURE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security reporting](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
-Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. This uses synthetic listings and a temporary database. It demonstrates the 24-hour and Active filters, brokerage cooldown, audit creation, test-mode recipient substitution, a simulated SendGrid failure, idempotent second run, and successful manual retry. It does not call Bridge or SendGrid and does not change the real audit history.
+AuditDesk builds on [Eric Meek's Audit-App](https://github.com/ericmeek7/Audit-App). Its repository documentation follows conventions used by [Cornerstone Signatures](https://github.com/RAHB-REALTORS-Association/cornerstone-signatures).
 
-## Configuration
+## License
 
-Copy `.env.example` to `.env` and configure the desired authentication and integration settings. Keep email and scheduling disabled until the staging workflow is verified. `.env` is ignored by Git. Environment variables override `.env` values.
-
-Development always uses temporary synthetic storage. Test/production use `DATABASE_PATH` (default `./data/audit.sqlite3`), with `/app/data/audit.sqlite3` on a persistent volume in Coolify.
-
-Run `python3 main.py inspect-bridge` to validate field mappings against the live `itso` OData metadata. `bridge_fields.json` documents the exact fields used. If Bridge changes the dataset, update the mapping and rerun inspection before restarting the job.
-
-In test/production, run the job manually with `python3 main.py run`. It queries a rolling 24-hour window, with both Active status and entry time restricted server-side. Runs use a file lock and unique listing/audit constraints. A second run over the same listings creates no new audits or emails.
-
-## Daily schedule
-
-In test/production, set `SCHEDULER_ENABLED=true` to let the single application process check every five minutes for the daily 8:00 a.m. run in `APP_TIMEZONE` (default America/Toronto). It retries failed intake, deduplicates completed days, and resumes from the last successful intake boundary after downtime. Keep it false for UI-only staging. There are no operating-system-specific background services to install.
-
-The first run uses `LISTING_WINDOW_HOURS`; subsequent successful intake boundaries allow recovery across longer outages. Listings that became inactive during an outage remain excluded by the product's Active-only rule. This is not a complete historical MLS replication service.
-
-## Selection and delivery
-
-For `N` newly processed listings, the job draws a binomial target by giving each listing the saved selection chance (5% by default). It then excludes brokerages and brokers audited within their configured cooldown periods. Among eligible brokerages, it chooses with a square-root listing-volume weight and picks a random listing from that brokerage. Each brokerage and broker can be chosen at most once in a run. This limits volume dominance while keeping the long-run rate near the configured percentage when enough brokerages remain eligible. If cooldowns leave fewer eligible brokerages than the target, the job records fewer audits.
-
-The audit record is committed before SendGrid is called. HTTP failures become `email_failed` and can be retried from the staff page without creating a new audit. If the response is lost, the status is `email_unknown` and automatic retry is blocked because SendGrid may already have accepted the message. Staff should check SendGrid before any manual intervention. The SendGrid message ID, when returned, and every send attempt are stored.
-
-The broker address comes from `Property.ListOfficeKey` → `Office.OfficeBrokerKey` → `Member.MemberEmail`. The brokerage address comes from the brokerage profile's `Office.OfficeEmail` and is copied when available; the listing agent address is `Property.ListAgentEmail` (with a Member fallback). Matching addresses are sent only one copy. Missing or invalid broker or agent email prevents sending and leaves a visible failed audit for staff. Test mode still sends only to `ADMIN_EMAIL` while showing the intended recipients for review.
-
-## Limits
-
-Bridge and SendGrid access require valid credentials and network access. SendGrid `202 Accepted` confirms acceptance for delivery, not arrival in the inbox. The app uses SQLite and a single-host file lock; if deployed across multiple hosts, move locking and the database to a shared transactional service. The UI shows the 200 most recent listings/audits and 50 most recent runs.
-
-## Reference
-
-The Bridge query and metadata structure follow the [RESO Bridge API examples](https://www.reso.org/web-api-examples/mls/bridge-api-generic/). The `itso` field map was checked against live Bridge metadata on September 24, 2026.
+AuditDesk is available under the [MIT License](LICENSE).
