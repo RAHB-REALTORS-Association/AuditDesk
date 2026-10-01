@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS audits (
   failure_message_id TEXT,
   failure_last_error TEXT,
   failure_actual_recipients TEXT,
+  asana_task_url TEXT,
   assignee_user_id INTEGER REFERENCES app_users(id)
 );
 CREATE TABLE IF NOT EXISTS selection_settings (
@@ -160,7 +161,7 @@ def init_db(path, *, check_revision=True):
             db.execute("ALTER TABLE email_template ADD COLUMN body_format TEXT NOT NULL DEFAULT 'plain'")
         audit_columns = {row["name"] for row in db.execute("PRAGMA table_info(audits)")}
         for name in ("outcome", "outcome_at", "issues", "failure_email_status", "failure_email_sent_at",
-                     "failure_message_id", "failure_last_error", "failure_actual_recipients"):
+                     "failure_message_id", "failure_last_error", "failure_actual_recipients", "asana_task_url"):
             if name not in audit_columns:
                 db.execute(f"ALTER TABLE audits ADD COLUMN {name} TEXT")
         # The separate roster was development-only; discard its assignments.

@@ -23,6 +23,7 @@ from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
+from .asana import save_task_link
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, seed_admins
 from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings, save_selection_settings
@@ -273,6 +274,15 @@ def create_app(config=None, verifier=None):
         except ValueError as error:
             return web.render(config, tab, form_values=(subject, body, fmt), error=str(error)), 400
         return web.render(config, tab, form_values=(subject, body, fmt))
+
+    @app.post('/outcome/<int:audit_id>/asana')
+    @require('audits.result')
+    def asana_link(audit_id):
+        try:
+            save_task_link(config, audit_id, request.form.get('asana_task_url', ''))
+        except ValueError as error:
+            return web.render(config, 'outcome', error=str(error), audit_id=audit_id), 400
+        return done('outcome', 'Asana task link saved.', id=audit_id)
 
     @app.post("/outcome/<int:audit_id>")
     @require("audits.result")
