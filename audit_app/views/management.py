@@ -3,11 +3,12 @@ import html
 
 from ..database import connect
 from ..lists import query_page
-from ..settings import brokerage_cooldown_days, display_percent, selection_percent
+from ..settings import brokerage_cooldown_days, display_percent, selection_percent, workflow_config
 from .common import esc, retry_token, sort_heading
 
 
 def admin_view(config, value=None, error=""):
+    config = workflow_config(config)
     current = display_percent(selection_percent(config))
     cooldown = brokerage_cooldown_days(config)
     shown = current if value is None else value
@@ -24,7 +25,21 @@ def admin_view(config, value=None, error=""):
         <div class="admin-content"><div class="admin-current"><span>Current cooldown</span><strong>{cooldown} {"day" if cooldown == 1 else "days"}</strong></div>
         <form method="post" action="/admin/brokerage-cooldown" class="admin-rate-form"><input type="hidden" name="token" value="{retry_token(config, "brokerage-cooldown")}">
         <label for="cooldown-days">Cooldown period</label><div class="rate-control"><input id="cooldown-days" name="cooldown_days" type="number" min="0" max="365" step="1" inputmode="numeric" required value="{cooldown}"><span>days</span><button class="primary-button" type="submit">Save cooldown</button></div></form>
-        <p>Changes apply to future selections only. 0 days removes the waiting period between runs; each office can still be selected only once per run.</p></div></section>'''
+        <p>Changes apply to future selections only. 0 days removes the waiting period between runs; each office can still be selected only once per run.</p></div></section>
+        <section class="panel admin-panel"><div class="panel-head"><div><h2>Broker cooldown and listing window</h2><p>Control candidate eligibility and the initial intake window.</p></div></div>
+        <div class="admin-content"><form method="post" action="/manage/workflow" class="workflow-settings-form">
+        <input type="hidden" name="token" value="{retry_token(config, 'workflow')}">
+        <label for="broker-cooldown">Broker cooldown (days)<input id="broker-cooldown" name="broker_cooldown_days" type="number" min="0" max="365" step="1" required value="{config.broker_cooldown_days}"></label>
+        <p class="form-help">Wait before selecting another listing from the same broker. 0 removes the waiting period; each broker can still be selected only once per run.</p>
+        <label for="listing-window">Initial listing window (hours)<input id="listing-window" name="window_hours" type="number" min="1" max="168" step="1" required value="{config.window_hours}"></label>
+        <p class="form-help">Look back 1–168 hours for Active listings. Catch-up after downtime can extend this window; already processed listings are excluded.</p>
+        <button type="submit" class="primary-button">Save workflow settings</button></form></div></section>
+        <section class="panel admin-panel"><div class="panel-head"><div><h2>Service configuration</h2><p>Deployment and delivery safeguards</p></div></div>
+        <div class="admin-content"><dl class="service-settings"><div><dt>Daily schedule</dt><dd>08:00 · {esc(config.timezone)}</dd></div>
+        <div><dt>Scheduler</dt><dd>{'Enabled' if config.scheduler_enabled else 'Disabled'}</dd></div>
+        <div><dt>Email delivery</dt><dd>{'Enabled' if config.email_enabled else 'Disabled'}</dd></div>
+        <div><dt>Environment</dt><dd>{esc(config.env.title())}</dd></div></dl>
+        <p class="form-help">IT configures credentials, identity, sender verification, timezone, scheduling, and live email switches in the deployment environment.</p></div></section>'''
 
 
 

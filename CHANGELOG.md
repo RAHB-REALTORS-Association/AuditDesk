@@ -78,3 +78,10 @@
 - Add selectable row counts and First/Previous/Next/Last controls to all six table views; remove fixed recent-record cutoffs.
 - Sort and search full matching histories, preserve brokerage groups and bulk selections across pages, and retain full export scope.
 - Remove the sidebar's daily-selection timezone footer.
+
+## PR 3 — Manage workspace
+
+- Consolidate selection, request/failure email wording, and account access under one Manage navigation entry, with role-specific sections.
+- Persist broker cooldown and initial listing window as managed business settings; validate changes and record the actor in activity history.
+- Read saved workflow settings on future runs without restart while keeping integration credentials and live-delivery safeguards in the environment.
+- Upgrade to schema version 4 additively, preserving version-3 saved settings and existing audit data.

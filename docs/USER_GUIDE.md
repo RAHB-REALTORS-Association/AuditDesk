@@ -10,7 +10,7 @@ Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If ident
 | Audit manager | Reviewer capabilities plus individual/bulk assignments, selection percentage and email templates |
 | IT administrator | Manager capabilities plus access management and activity-log export |
 
-No one receives a role automatically merely by signing in. IT can change or disable access under **Access management**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Active accounts with permission to record audit results are available for assignment. Reviewer, Audit manager, and IT administrator roles currently have this permission. The activity log records the authenticated person making each change.
+No one receives a role automatically merely by signing in. IT can change or disable access under **Manage → Access**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Active accounts with permission to record audit results are available for assignment. Reviewer, Audit manager, and IT administrator roles currently have this permission. The activity log records the authenticated person making each change.
 
 ## Development previews
 
@@ -53,7 +53,7 @@ IT owns runtime configuration, backups and recovery. AuditDesk intentionally doe
 
 ## Edit the audit email
 
-Open **Admin → Audit request email** in the staff sidebar. Edit the subject and body, use the `{{merge_tags}}` buttons to insert listing details, and select **Preview changes** to review the rendered message without saving or sending. Select **Save template** when it is ready. The saved wording is stored in the audit database and applies to future scheduled sends and manual retries without restarting the app. Previously sent emails are unchanged.
+Open **Manage → Audit request email** in the staff sidebar. Edit the subject and body, use the `{{merge_tags}}` buttons to insert listing details, and select **Preview changes** to review the rendered message without saving or sending. Select **Save template** when it is ready. The saved wording is stored in the audit database and applies to future scheduled sends and manual retries without restarting the app. Previously sent emails are unchanged.
 
 Select text in the message body and use **B**, **I**, or **U** to apply bold, italic, or underline. Preview shows the formatted email. SendGrid receives both a formatted HTML body and a readable plain-text version. Existing saved plain-text templates remain editable and are converted to the rich editor when next saved.
 
@@ -64,12 +64,12 @@ Available merge tags are `{{mls_number}}`, `{{address}}`, `{{agent_name}}`, `{{b
 
 After the original request email is accepted, open **Record result** on its Audit history row. **Mark passed** records a pass without sending another email. For a failed audit, enter the issues, select **Preview failed notice** to review the rendered message and recipients, then select **Record fail and send notice**. The issues are saved with the audit and included through the `{{issues}}` merge tag. Each audit can receive one result, preventing duplicate failed-audit notices from repeated submissions.
 
-Edit the follow-up wording under **Admin → Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit history without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
+Edit the follow-up wording under **Manage → Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit history without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
 
 
 ## Track who is working on an audit
 
-IT manages accounts and roles under **Admin → Access management**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. In **Audit history**, choose an account in the **Assigned to** dropdown and save.
+IT manages accounts and roles under **Manage → Access**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. In **Audit history**, choose an account in the **Assigned to** dropdown and save.
 
 For bulk assignment, select audit rows with their checkboxes, or use the heading checkbox to select all displayed audits (up to the latest 200). The toolbar shows the selection count. Choose an account under **Assign selected to**, then select **Apply to selected**. Choose **Unassigned — clear assignment** to remove assignments from the selected rows. **Clear selection** unchecks rows without changing their assignments. Selection survives table sorting, but resets after saving or refreshing.
 
@@ -78,7 +78,7 @@ The **Work status** column shows **Not started** when no one is assigned, **In p
 
 ## Change selection settings
 
-Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the audit database; `AUDIT_RATE` is the starting value until a manager saves a percentage.
+Open **Manage → Selection** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the audit database; `AUDIT_RATE` is the starting value until a manager saves a percentage.
 
 The **Brokerage cooldown** control sets how many whole days must pass before another listing from the same brokerage office can be selected. Choose 0–365 days; 0 removes the wait between runs, while the existing one-selection-per-office-per-run limit still applies. The saved value applies to future selections and does not change earlier audits. `BROKERAGE_COOLDOWN_DAYS` supplies the starting value until a manager saves a cooldown. The broker cooldown remains a separate configuration setting. Audit managers and IT administrators can change these settings.
 
@@ -97,3 +97,5 @@ Scheduled runs show **Completed with email errors** when intake succeeded but re
 Use **Filters & columns** above a list to search records, combine status checkboxes, and hide optional columns. Filters remain in the URL; column choices stay in this browser. Use the controls below each table to choose 10, 25, 50, or 100 rows and move between pages. History search and sorting cover all matching records, including older records beyond the former recent-history limits. Brokerage pagination counts brokerage groups and keeps their branches together. PDF and CSV exports retain their full report scope.
 
 Bulk audit selections remain selected when paging, filtering, or sorting in the same browser tab (up to 200 audits). The selection count identifies selections outside the current page. **Select all** selects only this page; **Clear selection** clears the entire batch. A successful bulk assignment clears the batch.
+
+The **Manage** workspace groups Selection, Audit request email, Failed-audit email, and Access. Sections follow your role: Audit managers can edit selection and email wording; only IT administrators can change access. Selection includes the office cooldown, broker cooldown (0–365 days), and initial listing window (1–168 hours). Saved settings affect future runs, survive restart, and are recorded in the activity log. A longer listing window still excludes previously processed listings; catch-up after downtime may extend it. The Service configuration panel shows the schedule, environment, and delivery switches so staff can see why work may be paused. IT changes those deployment controls outside the app.

@@ -301,6 +301,21 @@ class FoundationTests(unittest.TestCase):
                 self.assertIn('Rows per page',response.text)
                 self.assertNotIn('Daily selection ·',response.text)
 
+    def test_manage_groups_controls_and_enforces_workflow_permissions(self):
+        self.assertEqual(self.get('/?tab=manage',role='reviewer').status_code,403)
+        manager = self.get('/?tab=manage',role='manager').text
+        self.assertIn('Save workflow settings',manager)
+        self.assertIn('Audit request email',manager)
+        self.assertNotIn('href="/?tab=users"',manager)
+        self.assertIn('href="/?tab=users"',self.get('/?tab=manage').text)
+        form = {'broker_cooldown_days':'7','window_hours':'48'}
+        self.assertEqual(self.post('/manage/workflow',form,role='reviewer').status_code,403)
+        self.assertEqual(self.post('/manage/workflow',form,role='manager',page='/?tab=manage').status_code,303)
+        with connect(self.config.database_path) as db:
+            row=db.execute('SELECT * FROM workflow_settings').fetchone()
+            self.assertEqual((row['broker_cooldown_days'],row['window_hours']),(7,48))
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='settings.workflow_updated'").fetchone()[0],'manager')
+
     def test_intake_catches_up_from_last_success(self):
         run_job(self.config,FakeClient([]),now=NOW,sender=Mock())
         client=Mock();client.active_new_listings.return_value=[]
@@ -310,7 +325,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),3)
+        self.assertEqual(validate(file),4)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -335,7 +350,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],4)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)

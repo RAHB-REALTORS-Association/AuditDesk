@@ -1658,3 +1658,19 @@ a.sort-button { color: inherit; text-decoration: none; }
   .panel-head-actions { flex-wrap: wrap; gap: 8px; }
   .column-toggle { min-height: 40px; }
 }
+
+.manage-sections { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+.manage-sections a { color: var(--muted); padding: 10px 14px; border-radius: 8px; text-decoration: none; font-size: 14px; }
+.manage-sections a[aria-current=page] { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.workflow-settings-form { max-width: 560px; }
+.workflow-settings-form label { display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
+.workflow-settings-form input { max-width: 180px; }
+.workflow-settings-form .form-help { margin: 8px 0 20px; }
+.service-settings { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin: 0 0 16px; }
+.service-settings dt { font-size: 13px; color: var(--muted); }
+.service-settings dd { margin: 4px 0 0; }
+@media (max-width: 700px) {
+  .manage-sections { gap: 4px; }
+  .manage-sections a { padding: 10px; }
+  .service-settings { grid-template-columns: 1fr; }
+}

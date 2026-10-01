@@ -19,7 +19,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/views/reports.py` | Daily and brokerage HTML reports |
 | `audit_app/static/` | Shared styles, navigation/sorting/column/branch scripts, email editor script, and branding |
 
-Table column controls share one browser script. Preferences are stored by table in browser storage; hiding cells does not remove records or affect exports.
+List filters and row counts are represented in URLs; column preferences are stored by table in browser storage. `lists.py` bounds SQL history queries to a validated page size, applies parameterized search/status filters, and maps sort labels to fixed fields. Reports page aggregate rows, keeping brokerage branches with their parent. Hiding columns and paging do not affect full exports. Bulk selections persist across pages in tab-scoped storage, keyed by authenticated identity, with a 200-audit limit.
 
 Views format data and construct HTML. Routes authorize and validate HTTP input before calling workflow services. Visibility checks in navigation do not substitute for server-side permissions. `templates.py` handles email content and sanitization; it is separate from browser presentation in `views/`.
 
@@ -51,7 +51,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 3 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2 databases, preserves the saved selection percentage, and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 4 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3 databases, preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 

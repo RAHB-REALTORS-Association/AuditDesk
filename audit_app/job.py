@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .bridge import BridgeClient
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
-from .settings import brokerage_cooldown_days, selection_percent
+from .settings import brokerage_cooldown_days, selection_percent, workflow_config
 
 
 LOG = logging.getLogger("audit_app")
@@ -140,6 +140,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
         return simulate_cycle(config)
     init_db(config.database_path)
     with job_lock(config.database_path):
+        config = workflow_config(config)
         now = now or datetime.now(timezone.utc)
         if only_if_needed:
             local_now = now.astimezone(ZoneInfo(config.timezone))

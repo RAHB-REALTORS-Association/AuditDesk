@@ -57,16 +57,18 @@ The broker comes from `Property.ListOfficeKey` → `Office.OfficeBrokerKey` → 
 
 The map in [`bridge_fields.json`](../bridge_fields.json) describes the `itso` fields used. Run `inspect-bridge` only as an authorized live diagnostic. The query and metadata conventions follow the [RESO Bridge API examples](https://www.reso.org/web-api-examples/mls/bridge-api-generic/).
 
-## Selection defaults
+## Managed workflow settings and starting defaults
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `AUDIT_RATE` | `0.05` | Starting probability from `0` to `1`; saved manager percentage takes precedence |
-| `LISTING_WINDOW_HOURS` | `24` | Initial positive intake window; later runs extend it for catch-up |
-| `BROKERAGE_COOLDOWN_DAYS` | `14` | Starting office cooldown; saved Admin setting of 0–365 whole days takes precedence |
-| `BROKER_COOLDOWN_DAYS` | `14` | Nonnegative broker cooldown |
+| `LISTING_WINDOW_HOURS` | `24` | Starting intake window; saved Manage value of 1–168 hours takes precedence; catch-up may extend it |
+| `BROKERAGE_COOLDOWN_DAYS` | `14` | Starting office cooldown; saved Manage setting of 0–365 whole days takes precedence |
+| `BROKER_COOLDOWN_DAYS` | `14` | Starting broker cooldown; saved Manage value of 0–365 days takes precedence |
 
-Managed selection percentage and brokerage cooldown changes affect future new listings only. They do not reselect earlier records or reopen a test window. A 100% target does not bypass cooldowns or per-run broker/brokerage limits. A zero-day office cooldown removes the between-run wait; it does not remove the one-selection-per-office-per-run limit or the separate broker cooldown.
+Managed selection percentage, office/broker cooldown, and listing window changes affect future new listings only. They do not reselect earlier records or reopen a test window. A 100% target does not bypass cooldowns or per-run broker/brokerage limits. A zero-day office cooldown removes the between-run wait; it does not remove the one-selection-per-office-per-run limit or the separate broker cooldown.
+
+The **Manage → Selection** page groups these business controls; saved values persist in SQLite and apply to future runs without a restart. Environment values remain starting defaults for databases without saved settings. Changes do not rewrite historical records. Identity, credentials, sender verification, timezone, test recipient/cutoff, and live email/scheduler switches remain deployment configuration.
 
 ## Email wording and merge tags
 

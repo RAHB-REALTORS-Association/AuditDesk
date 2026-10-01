@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -64,6 +64,12 @@ CREATE TABLE IF NOT EXISTS selection_settings (
 CREATE TABLE IF NOT EXISTS brokerage_cooldown_settings (
   id INTEGER PRIMARY KEY CHECK(id = 1),
   days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 365),
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workflow_settings (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  broker_cooldown_days INTEGER NOT NULL CHECK(broker_cooldown_days BETWEEN 0 AND 365),
+  window_hours INTEGER NOT NULL CHECK(window_hours BETWEEN 1 AND 168),
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS email_attempts (

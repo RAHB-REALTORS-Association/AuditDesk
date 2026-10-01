@@ -24,7 +24,7 @@ from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, authenticate, check_csrf, require, save_user, seed_admins
-from .settings import save_brokerage_cooldown_days, save_selection_percent
+from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings
 from .templates import save_templates, save_failure_templates, validate_templates
 
 
@@ -158,13 +158,19 @@ def create_app(config=None, verifier=None):
     @require("settings.manage")
     def selection():
         save_selection_percent(config, request.form.get("rate_percent", ""))
-        return done("admin", "Selection percentage saved for future runs.")
+        return done("manage", "Selection percentage saved for future runs.")
 
     @app.post("/admin/brokerage-cooldown")
     @require("settings.manage")
     def brokerage_cooldown():
         save_brokerage_cooldown_days(config, request.form.get("cooldown_days", ""))
-        return done("admin", "Brokerage cooldown saved for future runs.")
+        return done("manage", "Brokerage cooldown saved for future runs.")
+
+    @app.post("/manage/workflow")
+    @require("settings.manage")
+    def workflow_settings():
+        save_workflow_settings(config, request.form)
+        return done("manage", "Workflow settings saved for future runs.")
 
     @app.post("/users")
     @require("users.manage")
