@@ -58,6 +58,8 @@ Windows can use `.venv\Scripts\Activate.ps1`; Docker gives identical deployment 
 
 ## Schedule and delivery recovery
 
+Bridge reads retry transient failures up to six attempts. Rate limiting honors numeric or HTTP-date Retry-After headers; without a valid header, waits start at one minute and increase. A requested delay above 15 minutes stops intake for a later retry instead of requesting early. Retry logs contain status and delay, never credentials or request URLs.
+
 The in-process scheduler checks every five minutes after 08:00 in APP_TIMEZONE. Successful intake suppresses another scheduled intake that day; failures can retry. After a successful intake, subsequent runs query from at least its start boundary, covering outages while database uniqueness prevents reselection. The Active-only rule remains: a listing inactive at recovery time is not included. First installation only imports the configured rolling window.
 
 Committed pending request emails resume on the next job. Interrupted `email_sending` attempts become `email_unknown` at service startup and are never automatically resent. Check SendGrid before resolving an unknown state. Failed notices can be resumed manually from the audit queue. Test audits cannot send production requests or failure notices after an environment change. Turning EMAIL_ENABLED off prevents all sender calls, including retries.
