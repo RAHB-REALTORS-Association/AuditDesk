@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — mobile navigation icons
+
+- Replace mobile menu text with hamburger and close icons, retaining accessible labels and 44px touch targets.
+
 ## Unreleased — list column controls
 
 - Add a compact Columns button in each list header, opening a floating chooser with browser-saved preferences and a Show all columns reset.

@@ -1130,7 +1130,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 
 @media(max-width:950px) {
   .menu-toggle {
-    display: block;
+    display: inline-flex;
     position: static;
     flex-shrink: 0;
   }
@@ -1165,7 +1165,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 
 @media(max-width:950px) {
   .menu-toggle {
-    display: block;
+    display: inline-flex;
     position: static;
     flex-shrink: 0;
   }
@@ -1196,8 +1196,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
   }
 
   .menu-close {
-    display: block;
-    margin-bottom: 20px;
+    display: inline-flex;
+    align-self: flex-end;
+    margin-bottom: 12px;
   }
 
   main {
@@ -1594,4 +1595,34 @@ table[data-columns].has-hidden-columns {
   min-height: 30px;
   padding: 4px 9px;
   font-size: 12px;
+}
+
+
+.menu-toggle,.menu-close {
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.menu-toggle:hover {
+  background: var(--canvas);
+}
+
+.menu-close:hover {
+  background: rgb(255 255 255 / 12%);
+}
+
+.menu-toggle svg,.menu-close svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
