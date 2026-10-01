@@ -27,6 +27,8 @@ try:
            '-e','CF_ACCESS_ISSUER=https://example.cloudflareaccess.com','-e','CF_ACCESS_AUDIENCE=smoke-only',
            '-e','BOOTSTRAP_ADMIN_EMAILS=smoke@example.com',image)
     ready()
+    # Older Coolify releases replace the image probe with this HTTP command.
+    docker('exec',name,'curl','-s','-X','GET','-f','http://localhost:8765/healthz')
     assert docker('exec',name,'id','-u')=='10001'
     # Origin bypass must fail without a signed Access identity.
     denied=docker('exec',name,'python','-c',"import urllib.request,urllib.error\ntry: urllib.request.urlopen('http://127.0.0.1:8765/')\nexcept urllib.error.HTTPError as e: print(e.code)")

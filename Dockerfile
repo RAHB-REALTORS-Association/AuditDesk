@@ -3,6 +3,7 @@ ARG VERSION=dev
 LABEL org.opencontainers.image.title="AuditDesk" org.opencontainers.image.version=$VERSION
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATABASE_PATH=/app/data/audit.sqlite3 APP_HOST=0.0.0.0 APP_PORT=8765 AUTH_MODE=cloudflare EMAIL_ENABLED=false SCHEDULER_ENABLED=false
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock && useradd --uid 10001 --create-home auditdesk && mkdir /app/data && chown auditdesk:auditdesk /app/data
 COPY audit_app ./audit_app

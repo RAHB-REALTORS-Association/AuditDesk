@@ -34,7 +34,7 @@ The existing Coolify application is recorded in `AGENTS.md`; do not create a dup
 | EMAIL_ENABLED | false |
 | SCHEDULER_ENABLED | false |
 
-5. Configure internal HTTP health check `GET /healthz` on port `8765`. This endpoint reveals only readiness/schema and does not require login. Probe inside the container rather than creating an Access bypass.
+5. Configure internal HTTP health check `GET /healthz` on port `8765`. This endpoint reveals only readiness/schema and does not require login. Probe inside the container rather than creating an Access bypass. The image includes curl because Coolify v4.0.0-beta.397 overrides the Dockerfile's Python probe with its dashboard HTTP probe; without curl the otherwise ready container becomes unhealthy and Traefik returns 404.
 6. Disable overlapping/rolling instances for this SQLite deployment. Stop the old instance before starting its replacement; brief upgrade downtime is deliberate. The database service lock rejects an overlapping worker.
 7. Deploy the exact reviewed commit/image. Verify health, login, bootstrap Admin, denied uninvited identity, role restrictions, and persistence after restart. Confirm the mounted path.
 8. Keep email/scheduler off for initial UI review. Configure Bridge, SendGrid, verified sender and test recipient separately. Enable email in `APP_ENV=test` only for an explicitly requested live integration test; only `ADMIN_EMAIL` receives messages. Production delivery requires a deliberate `APP_ENV=production` change.
