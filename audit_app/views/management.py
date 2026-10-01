@@ -37,5 +37,5 @@ def activity_view(config):
         events = db.execute("""SELECT e.*,u.email FROM activity_events e LEFT JOIN app_users u ON u.subject=e.actor
             ORDER BY e.id DESC LIMIT 200""").fetchall()
     rows = "".join(f'<tr><td>{esc(e["occurred_at"])}</td><td>{esc(e["email"] or e["actor"])}</td><td>{esc(e["action"])}</td><td>{esc(e["target"])}</td><td>{esc(e["detail"])}</td></tr>' for e in events)
-    return '<section class="panel"><div class="panel-head"><h2>Latest 200 changes</h2><a href="/activity.csv">Export CSV</a></div><div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>' + (rows or '<tr><td colspan="5">No changes recorded yet.</td></tr>') + '</tbody></table></div></section>'
+    return '<section class="panel"><div class="panel-head"><h2>Latest 200 changes</h2><a href="/activity.csv">Export CSV</a></div><div class="table-wrap"><table data-columns="activity"><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>' + (rows or '<tr><td colspan="5">No changes recorded yet.</td></tr>') + '</tbody></table></div></section>'
 

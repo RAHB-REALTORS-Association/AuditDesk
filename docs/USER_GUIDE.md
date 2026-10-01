@@ -26,6 +26,12 @@ A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX bann
 
 Test mode redirects all messages to the configured administrator, and the banner shows that mode. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
 
+## Choose visible columns
+
+Use **Columns** above a list to show or hide columns. Audit history, listings, scheduled runs, daily reports, brokerage statistics, and the activity log each remember their own choices in your browser. The identifying column, audit selection checkboxes, and audit actions stay visible. **Show all columns** restores the default view. Press Escape to close the control.
+
+Hiding columns changes the screen only. Sorting, bulk selection, branch expansion, and CSV/PDF exports still use the underlying records. If browser storage is unavailable, your choices apply until the page is refreshed.
+
 ## Manager controls
 
 Selection settings affect new listings on future runs; they never reselect already processed listings. Brokerage/broker cooldowns may reduce the count below the lottery target.

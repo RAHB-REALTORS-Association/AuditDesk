@@ -17,7 +17,9 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/views/management.py` | Selection settings, access management, and activity views |
 | `audit_app/views/emails.py` | Email template editor and rendered previews |
 | `audit_app/views/reports.py` | Daily and brokerage HTML reports |
-| `audit_app/static/` | Shared styles, navigation/sorting/branch scripts, email editor script, and branding |
+| `audit_app/static/` | Shared styles, navigation/sorting/column/branch scripts, email editor script, and branding |
+
+Table column controls share one browser script. Preferences are stored by table in browser storage; hiding cells does not remove records or affect exports.
 
 Views format data and construct HTML. Routes authorize and validate HTTP input before calling workflow services. Visibility checks in navigation do not substitute for server-side permissions. `templates.py` handles email content and sanitization; it is separate from browser presentation in `views/`.
 

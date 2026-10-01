@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — list column controls
+
+- Add a Columns control to each table with browser-saved preferences and a Show all columns reset.
+- Keep identifying columns, audit selection, and actions visible; retain sorting, branch expansion, bulk operations, and complete exports.
+
 ## Unreleased — remove the staff simulation page
 
 - Remove Simulation from staff navigation, tab routing, and presentation styles.
