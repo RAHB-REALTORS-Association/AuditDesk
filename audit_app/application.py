@@ -17,9 +17,10 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
 from . import web
-from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
+from .assignment import assign_audits, assign_reviewer
+from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
-from .database import connect, init_db
+from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, authenticate, check_csrf, require, save_user, seed_admins
@@ -90,7 +91,8 @@ def create_app(config=None, verifier=None):
         if request.method == "POST":
             if request.mimetype != "application/x-www-form-urlencoded":
                 abort(415, "Use an application form to submit changes.")
-            if any(len(values) != 1 for _, values in request.form.lists()):
+            if any(len(values) != 1 for key, values in request.form.lists()
+                   if not (request.path == "/assignments" and key == "audit_ids")):
                 abort(400, "Repeated form fields are not allowed.")
             check_csrf(config)
             revision = request.form.get("revision", "")
@@ -103,7 +105,7 @@ def create_app(config=None, verifier=None):
         response.headers.update({"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
                                  "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
                                  "X-Request-ID": getattr(g, "request_id", "")})
-        # Inline code is legacy template editor code; no external script sources are allowed.
+        # Legacy inline event handlers remain; no external script sources are allowed.
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         if urlparse(config.public_url).scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
@@ -126,7 +128,7 @@ def create_app(config=None, verifier=None):
     def health():
         with connect(config.database_path) as db:
             db.execute("SELECT id FROM app_users LIMIT 1").fetchone()
-        return {"status": "ok", "schema": 1}
+        return {"status": "ok", "schema": SCHEMA_VERSION}
 
     @app.get("/")
     def index():
@@ -143,7 +145,7 @@ def create_app(config=None, verifier=None):
                     if not db.execute("SELECT 1 FROM audits WHERE id=?", (int(audit_id),)).fetchone():
                         abort(404)
             period = request.args.get("period", "3m")
-            if period not in web.PERIODS:
+            if period not in PERIODS:
                 abort(400, "Invalid report period.")
             return web.render(config, tab, notice=request.args.get("notice", ""), audit_id=int(audit_id) if tab == "outcome" else None, period=period)
         return page()
@@ -164,34 +166,30 @@ def create_app(config=None, verifier=None):
         save_user(config, request.form)
         return done("users", "Application access saved.")
 
-    @app.post("/reviewers")
-    @require("reviewers.manage")
-    def add_person():
-        add_reviewer(config, request.form.get("name", ""))
-        return done("reviewers", "Name added to the audit team.")
-
-    @app.post("/reviewers/<int:item_id>")
-    @require("reviewers.manage")
-    def person(item_id):
-        action = request.form.get("action")
-        if action == "rename":
-            rename_reviewer(config, item_id, request.form.get("name", ""))
-        elif action in {"activate", "deactivate"}:
-            set_reviewer_active(config, item_id, action == "activate")
-        elif action == "delete":
-            delete_reviewer(config, item_id)
-        else:
-            abort(400, "Invalid roster action.")
-        return done("reviewers", "Audit team updated.")
-
     @app.post("/assignment/<int:item_id>")
     @require("audits.assign")
     def assignment(item_id):
-        value = request.form.get("reviewer_id", "")
-        if value and not value.isdigit():
+        if "assignee_user_id" not in request.form:
+            abort(400, "Reload the assignment form before saving.")
+        value = request.form["assignee_user_id"]
+        if value and (not value.isascii() or not value.isdigit()):
             abort(400, "Choose an active reviewer.")
         assign_reviewer(config, item_id, int(value) if value else None)
         return done("audits", "Assignment saved.")
+
+    @app.post("/assignments")
+    @require("audits.assign")
+    def bulk_assignment():
+        ids = request.form.getlist("audit_ids")
+        if not ids or len(ids) > 200 or any(not value.isascii() or not value.isdigit() for value in ids):
+            abort(400, "Select between 1 and 200 audits.")
+        if "assignee_user_id" not in request.form:
+            abort(400, "Choose an assignment.")
+        value = request.form["assignee_user_id"]
+        if value != "unassigned" and (not value.isascii() or not value.isdigit()):
+            abort(400, "Choose an active reviewer.")
+        assign_audits(config, [int(item) for item in ids], None if value == "unassigned" else int(value))
+        return done("audits", f"Assignment updated for {len(ids)} audits.")
 
     @app.post("/template")
     @app.post("/failure-template")
@@ -248,9 +246,9 @@ def create_app(config=None, verifier=None):
     def pdf():
         from .brokerage_pdf import build_brokerage_pdf
         period = request.args.get("period", "3m")
-        if period not in web.PERIODS:
+        if period not in PERIODS:
             abort(400, "Invalid report period.")
-        return Response(build_brokerage_pdf(web.brokerage_statistics(config, period)), mimetype="application/pdf",
+        return Response(build_brokerage_pdf(brokerage_statistics(config, period)), mimetype="application/pdf",
                         headers={"Content-Disposition": f'attachment; filename="auditdesk-brokerages-{period}.pdf"'})
 
     @app.get("/activity.csv")

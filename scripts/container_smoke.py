@@ -49,10 +49,10 @@ try:
     preview=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
     assert 'DEVELOPMENT SANDBOX' in preview and 'DEMO-1' in preview
     db_script="import glob,sqlite3; db=sqlite3.connect(glob.glob('/tmp/auditdesk-preview-*/sandbox.sqlite3')[0]); "
-    docker('exec',name,'python','-c',db_script+"db.execute(\"UPDATE audit_reviewers SET name='Disposable change'\"); db.commit()")
+    docker('exec',name,'python','-c',db_script+"db.execute(\"UPDATE app_users SET display_name='Disposable change'\"); db.commit()")
     docker('restart',name)
     ready()
-    assert docker('exec',name,'python','-c',db_script+"print(db.execute('SELECT name FROM audit_reviewers').fetchone()[0])")=='Demo Reviewer'
+    assert docker('exec',name,'python','-c',db_script+"print(db.execute(\"SELECT display_name FROM app_users WHERE role='reviewer'\").fetchone()[0])")=='Demo Reviewer'
     print('PASS: open development preview, synthetic fixtures, no volume required, and database reset on restart')
 finally:
     subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

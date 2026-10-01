@@ -33,3 +33,12 @@ def start_runtime(config):
     if config.env != "development" and config.scheduler_enabled:
         threading.Thread(target=scheduler, daemon=True, name="auditdesk-scheduler").start()
     return handle, stop
+
+
+def serve(config):
+    """Start the local HTTP server with the same runtime as the deployment app."""
+    from .application import create_app
+    app = create_app(config)
+    config = app.extensions["auditdesk_config"]
+    app.extensions["auditdesk_runtime"] = start_runtime(config)
+    app.run(host=config.host, port=config.port, debug=False)

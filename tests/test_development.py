@@ -17,6 +17,22 @@ from audit_app.runtime import start_runtime
 
 
 class DevelopmentTests(unittest.TestCase):
+    def test_all_staff_views_and_email_editor_asset_are_available(self):
+        app = self.app()
+        client = app.test_client()
+        for tab in ('audits', 'listings', 'runs', 'admin',
+                    'template', 'failure_template', 'report', 'brokerages', 'users', 'activity'):
+            with self.subTest(tab=tab):
+                response = client.get('/?tab=' + tab)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b'DEVELOPMENT SANDBOX', response.data)
+                if tab in ('template', 'failure_template'):
+                    self.assertIn(b'/static/template-editor.js', response.data)
+        asset = client.get('/static/template-editor.js')
+        self.addCleanup(asset.close)
+        self.assertEqual(asset.status_code, 200)
+        self.assertIn(b'hiddenBody.value = editor.innerHTML', asset.data)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -55,10 +71,10 @@ class DevelopmentTests(unittest.TestCase):
         with connect(a.database_path) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 4)
             self.assertTrue(all(row[0].startswith('DEMO-') for row in db.execute('SELECT mls_number FROM listings')))
-            db.execute("UPDATE audit_reviewers SET name='Changed locally'")
+            db.execute("UPDATE app_users SET display_name='Changed locally'")
             db.commit()
         with connect(b.database_path) as db:
-            self.assertEqual(db.execute('SELECT name FROM audit_reviewers').fetchone()[0], 'Demo Reviewer')
+            self.assertEqual(db.execute("SELECT display_name FROM app_users WHERE role='reviewer'").fetchone()[0], 'Demo Reviewer')
         self.assertEqual(self.live.read_bytes(), self.original)
 
     def test_open_ui_still_protects_forms_and_records_synthetic_identity(self):
@@ -72,13 +88,13 @@ class DevelopmentTests(unittest.TestCase):
             self.assertEqual(asset.status_code, 200)
         self.assertEqual(client.get('/?tab=users').status_code, 200)
         self.assertNotIn('Secure;', response.headers.get('Set-Cookie', ''))
-        page = client.get('/?tab=reviewers')
+        page = client.get('/?tab=users')
         data = {'token': re.search(r'name="token" value="([^"]+)"', page.text)[1],
-                'revision': re.search(r'name="revision" value="(\d+)"', page.text)[1], 'name': 'Preview Reviewer'}
-        self.assertEqual(client.post('/reviewers', data=data, headers={'Origin': 'https://evil.example'}).status_code, 403)
-        self.assertEqual(client.post('/reviewers', data=data, headers={'Origin': self.config.public_url}).status_code, 303)
+                'revision': re.search(r'name="revision" value="(\d+)"', page.text)[1], 'email': 'preview@example.invalid', 'display_name': 'Preview Reviewer', 'role': 'reviewer', 'active': '1', 'version': '0'}
+        self.assertEqual(client.post('/users', data=data, headers={'Origin': 'https://evil.example'}).status_code, 403)
+        self.assertEqual(client.post('/users', data=data, headers={'Origin': self.config.public_url}).status_code, 303)
         with connect(app.extensions['auditdesk_config'].database_path) as db:
-            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='reviewer.created'").fetchone()[0], 'development-sandbox')
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='access.updated'").fetchone()[0], 'development-sandbox')
 
     def test_live_boundaries_block_even_with_directly_supplied_keys(self):
         config = replace(self.config, email_enabled=True, scheduler_enabled=True,

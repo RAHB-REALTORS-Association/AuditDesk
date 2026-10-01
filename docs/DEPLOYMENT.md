@@ -1,5 +1,7 @@
 # AuditDesk deployment
 
+See [Configuration](CONFIGURATION.md) for environment variables, [Architecture](ARCHITECTURE.md) for module boundaries, and [Contributing](../CONTRIBUTING.md) for local development. Gunicorn reads runtime environment variables directly; the CLI also loads `.env` from the working directory.
+
 ## Architecture and identity boundary
 
 One Python application serves the existing audit workflow through Flask/Gunicorn. SQLite, application users/roles, templates, and append-only activity records live at `/app/data/audit.sqlite3`. There is one Gunicorn worker with four threads and at most one application instance per volume. File locks protect the scheduler and prevent two service processes from owning the database. Locks work across macOS, Linux, and Windows; the deployment container runs Linux.
@@ -20,7 +22,7 @@ No persistent volume is needed for previews. The Dockerfile no longer declares a
 
 ## First staging deployment
 
-The existing Coolify application is recorded in `AGENTS.md`; do not create a duplicate. This is a fresh installation, not an import of the original developer's computer database.
+The existing Coolify application is recorded in [historical project context](PROJECT_CONTEXT.md); verify the current application before deployment and do not create a duplicate. Initial setup used a fresh installation, not an import of the original developer's computer database.
 
 1. Build and test the exact commit; use Dockerfile build pack, `/Dockerfile`, base directory `/`, and exposed port `8765`. Clear the old `python3 main.py serve` start-command override so Docker's Gunicorn command is used. Do not map this port publicly.
 2. Mount a named persistent volume at `/app/data`. It must be writable by UID/GID `10001`. Never reuse an unrelated application volume. Do not delete or detach it on upgrades.
@@ -92,7 +94,7 @@ python main.py restore --input /app/data/backups/auditdesk-YYYYMMDD.sqlite3 --co
 
 Restore refuses a running service, checks integrity, foreign keys and supported schema, prepares a temporary database, preserves administrator access, saves a pre-restore backup, and replaces the database atomically. Files above 512 MiB are rejected. Resume the service and verify login and record counts. Restore rolls back all data to the backup time, so newer changes can be lost.
 
-Schema version 1 initializes a fresh database transactionally. Existing baseline schema is accepted by the tested initialization code, but no original installation data migration is required for this project. Newer unknown schema versions are rejected.
+Schema version 2 initializes a fresh database transactionally and accepts baseline/version-1 databases. The development-only audit roster and its assignments are discarded; account assignments use application user IDs. Existing audit results remain intact. No original installation data migration is required for this project. Newer unknown schema versions are rejected. Version-1 application images cannot open version-2 databases.
 
 ## Releases and rollback
 
@@ -102,4 +104,4 @@ Before upgrading, take a verified backup and inspect schema compatibility. Stop/
 
 ## Deliberate scope
 
-This remains a focused audit application. No document upload, directory synchronization, publication scheduling, multi-tenancy, or distributed queues were added. Template Save deliberately changes future email wording; previews do not send. Recorded outcomes remain single-assignment. Template publication/version history and an in-app restore uploader are outside this foundation. Existing sanitized rich-email editor scripts still require CSP `unsafe-inline`; external scripts and frames are blocked. The shared record-revision check is conservative: another user's change can require a refresh even on a different record.
+This remains a focused audit application. No document upload, directory synchronization, publication scheduling, multi-tenancy, or distributed queues were added. Template Save deliberately changes future email wording; previews do not send. Recorded outcomes remain single-assignment. Template publication/version history and an in-app restore uploader are outside this foundation. The email editor script is served from static assets; legacy inline event handlers still require CSP `unsafe-inline`; external scripts and frames are blocked. The shared record-revision check is conservative: another user's change can require a refresh even on a different record.

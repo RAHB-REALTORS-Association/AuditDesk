@@ -2,6 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -53,14 +54,7 @@ CREATE TABLE IF NOT EXISTS audits (
   failure_message_id TEXT,
   failure_last_error TEXT,
   failure_actual_recipients TEXT,
-  reviewer_name_snapshot TEXT
-);
-CREATE TABLE IF NOT EXISTS audit_reviewers (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  assignee_user_id INTEGER REFERENCES app_users(id)
 );
 CREATE TABLE IF NOT EXISTS selection_settings (
   id INTEGER PRIMARY KEY CHECK(id = 1),
@@ -138,7 +132,7 @@ def init_db(path):
     Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with connect(path) as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version > 1:
+        if version > SCHEMA_VERSION:
             raise ValueError("Database schema is newer than this application")
         db.execute("BEGIN IMMEDIATE")
         for statement in SCHEMA.split(";"):
@@ -157,13 +151,11 @@ def init_db(path):
                      "failure_message_id", "failure_last_error", "failure_actual_recipients"):
             if name not in audit_columns:
                 db.execute(f"ALTER TABLE audits ADD COLUMN {name} TEXT")
-        if "reviewer_id" not in audit_columns:
-            db.execute("ALTER TABLE audits ADD COLUMN reviewer_id INTEGER REFERENCES audit_reviewers(id)")
-        if "reviewer_name_snapshot" not in audit_columns:
-            db.execute("ALTER TABLE audits ADD COLUMN reviewer_name_snapshot TEXT")
-        db.execute("""UPDATE audits SET reviewer_name_snapshot=(
-            SELECT name FROM audit_reviewers WHERE id=audits.reviewer_id)
-            WHERE reviewer_id IS NOT NULL AND reviewer_name_snapshot IS NULL""")
+        # The separate roster was development-only; discard its assignments.
+        for legacy_column in ("reviewer_id", "reviewer_name_snapshot"):
+            if legacy_column in audit_columns:
+                db.execute(f"ALTER TABLE audits DROP COLUMN {legacy_column}")
+        db.execute("DROP TABLE IF EXISTS audit_reviewers")
         db.execute("""CREATE TABLE IF NOT EXISTS app_users (
             id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
             subject TEXT UNIQUE, display_name TEXT NOT NULL DEFAULT '',
@@ -174,5 +166,7 @@ def init_db(path):
             id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL,
             detail TEXT NOT NULL DEFAULT '')""")
-        db.execute("PRAGMA user_version=1")
+        if "assignee_user_id" not in audit_columns:
+            db.execute("ALTER TABLE audits ADD COLUMN assignee_user_id INTEGER REFERENCES app_users(id)")
+        db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         db.commit()

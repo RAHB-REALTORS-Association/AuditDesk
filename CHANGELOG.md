@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased — mobile navigation icons
+
+- Replace mobile menu text with hamburger and close icons, retaining accessible labels and 44px touch targets.
+
+## Unreleased — list column controls
+
+- Add a compact Columns button in each list header, opening a floating chooser with browser-saved preferences and a Show all columns reset.
+- Keep identifying columns, audit selection, and actions visible; retain sorting, branch expansion, bulk operations, and complete exports.
+
+## Unreleased — remove the staff simulation page
+
+- Remove Simulation from staff navigation, tab routing, and presentation styles.
+- Keep isolated fixtures and the command-line simulation for developer verification.
+
+## Unreleased — account assignments and bulk operations
+
+- Remove the Audit team page, roster routes, and roster-only controls; active account roles determine assignment eligibility.
+- Schema version 2 replaces development roster fields and data with account assignment references.
+- Add row selection, select-all, selection counts, and atomic bulk assignment/clearing in Audit history.
+- Reject unavailable accounts, missing audits, duplicate selections, and stale batches without partial updates; log each affected audit.
+
+## Unreleased — interface polish
+
+- Give history columns room to read, limit sticky actions to audit history, and unify report/simulation card spacing.
+- Normalize editor, outcome, and access-form padding; align checkbox controls and stack forms on narrow screens.
+- Align the application shell with Cornerstone Signatures: shared color tokens, system typography, compact navigation, and a separate identity bar.
+
+## Unreleased — repository organization
+
+- Add the MIT license and contributor licensing guidance.
+- Separate CLI commands from the compatibility launcher; add the equivalent `python -m audit_app` entry point.
+- Split HTML components into helpers, workflow, management, email, and report views; move local HTTP startup into runtime and the email editor script into static assets.
+- Rewrite the README with a product overview, quick start, environment comparison, module map, and documentation links.
+- Expand the staff guide and add architecture, configuration, contribution, and private security-reporting docs, plus a pull request template.
+- Preserve the original handoff as historical project context and focus contributor instructions on current development rules.
+
 ## Unreleased — deployment foundation
 
 - Cloudflare Access JWT authentication and application-owned Reviewer, Audit manager, and IT administrator roles.
