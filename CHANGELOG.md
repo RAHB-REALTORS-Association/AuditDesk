@@ -2,6 +2,7 @@
 
 ## Unreleased — interface polish
 
+- Give history columns room to read, limit sticky actions to audit history, and unify report/simulation card spacing.
 - Normalize editor, roster, outcome, and access-form padding; align checkbox controls and stack forms on narrow screens.
 - Align the application shell with Cornerstone Signatures: shared color tokens, system typography, compact navigation, and a separate identity bar.
 
