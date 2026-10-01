@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — interface polish
+
+- Align the application shell with Cornerstone Signatures: shared color tokens, system typography, compact navigation, and a separate identity bar.
+
 ## Unreleased — repository organization
 
 - Add the MIT license and contributor licensing guidance.
