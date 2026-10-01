@@ -20,9 +20,11 @@
 - User moved the skeleton to VPS06 on 2026-09-30; verified Primary Server VPS06, network coolify. The original application URL is obsolete.
 - Team: Cornerstone.inc; project: Cornerstone Association; environment: staging; application: AuditDesk.
 - User prefers Chrome debug for Coolify interaction. The authenticated Chrome RAHB profile was accessible through browser tooling during initial inspection.
-- On 2026-09-30 the user described this as an undeployed skeleton. Read-only inspection showed status Exited, organization fork on main, Nixpacks, start command `python3 main.py serve`, exposed port `3000`, and domain `http://auditdesk.ai.rahb.local`.
-- These are observed skeleton values, not approved final deployment settings. The application currently defaults to port `8765` and localhost binding. Resolve these differences before deployment.
-- Target HTTPS hostname: `auditdesk.oncornerstone.app`; bootstrap administrator: `justin.hayes@cornerstone.inc`. Cloudflare issuer/audience, persistent storage, and health checks remain to be configured and verified. Do not store secret values in source or documentation.
+- Staging was deployed on 2026-09-30 (2026-10-01 UTC) from commit `07f153b677ef19052cfb1a308fad72a7eebaa656` on `feat/coolify-access-foundation`. Dockerfile build pack, port 8765, no public port mapping, and the default image command replace the original Nixpacks skeleton.
+- HTTPS hostname: `auditdesk.oncornerstone.app`; bootstrap administrator: `justin.hayes@cornerstone.inc`. Cloudflare Access uses the existing Staff policy; signed identity validation and roles live in the app. Real browser sign-in reached the administrator UI. Do not store secret values in source or documentation.
+- Volume `vw844cowkss0k8ccs8gww8ws-audit-data` mounts at `/app/data`; database and session key were created with UID/GID 10001. Email and scheduling remain disabled. Automatic and preview deployments are disabled; consistent container names prevent overlapping SQLite owners.
+- Coolify v4.0.0-beta.397 overrides the image's health probe with curl/wget. The image includes curl; omitting it caused an unhealthy container and Traefik 404. The corrected proxy readiness request returns HTTP 200.
+- User confirms the wildcard certificate is at Cloudflare's edge and their routing uses a tunnel. Leave shared certificate/zone/tunnel settings alone unless a specific routing fault is verified.
 - Preserve persistent data through deployment changes; never recreate or detach storage as a routine upgrade step.
 
 ## Local verification
