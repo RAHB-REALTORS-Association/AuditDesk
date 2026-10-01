@@ -13,7 +13,7 @@ class AssignmentTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = replace(load_config(), database_path=str(Path(self.temp.name) / "audit.sqlite3"))
+        self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name) / "audit.sqlite3"))
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
             listing_id = db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,address,first_processed_at,processing_status)

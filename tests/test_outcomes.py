@@ -40,7 +40,7 @@ class OutcomeTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name) / "audit.sqlite3"),
+        self.config = replace(load_config(), env="test", email_enabled=True, database_path=str(Path(self.temp.name) / "audit.sqlite3"),
                               admin_email="admin@example.com", sendgrid_key="fake-key", from_address="audit@example.com",
                               rate=1, test_end_at=None)
         init_db(self.config.database_path)

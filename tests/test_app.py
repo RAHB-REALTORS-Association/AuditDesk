@@ -42,8 +42,8 @@ class AuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = replace(load_config(), database_path=str(Path(self.temp.name) / "audit.sqlite3"),
-                              admin_email="admin@example.com", sendgrid_key="fake-key", from_address="audit@example.com", rate=1)
+        self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name) / "audit.sqlite3"),
+                              email_enabled=True, admin_email="admin@example.com", sendgrid_key="fake-key", from_address="audit@example.com", rate=1)
 
     def test_twice_does_not_repeat_audit_or_email(self):
         rows = [listing("1")]
@@ -58,7 +58,7 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM email_attempts").fetchone()[0], 1)
             self.assertEqual(db.execute("SELECT broker_first_name FROM listings").fetchone()[0], "Taylor")
 
-    def test_wake_catchup_skips_before_eight_and_after_a_daily_run(self):
+    def test_scheduler_skips_before_eight_and_after_a_daily_run(self):
         client = FakeClient([listing("1")])
         before = run_job(self.config, client, random.Random(1), NOW - timedelta(minutes=1), only_if_needed=True)
         self.assertEqual(before["skipped"], "before_daily_time")
@@ -72,6 +72,7 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT count(*) FROM runs").fetchone()[0], 1)
 
     def test_test_mode_substitutes_all_recipients_at_sendgrid_boundary(self):
+        init_db(self.config.database_path)
         row = listing("1")
         to, cc, actual = resolve_recipients(row, self.config)
         self.assertEqual(actual, ["admin@example.com"])
@@ -104,6 +105,7 @@ class AuditTests(unittest.TestCase):
                 send_email(config, listing("1"), 1, to, cc, actual)
 
     def test_production_routes_to_broker_and_copies_office_and_agent(self):
+        init_db(self.config.database_path)
         config = replace(self.config, env="production")
         to, cc, actual = resolve_recipients(listing("1"), config)
         self.assertEqual(to, ["broker@example.com"])

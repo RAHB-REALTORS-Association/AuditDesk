@@ -1,3 +1,4 @@
+from .security import event
 import sqlite3
 import re
 import html
@@ -148,6 +149,7 @@ def save_templates(config, subject, body, body_format="plain"):
             ON CONFLICT(id) DO UPDATE SET subject=excluded.subject, body=excluded.body,
             body_format=excluded.body_format, updated_at=excluded.updated_at""",
                    (subject, body, body_format, updated))
+        event(db, "template.updated", "request")
         db.commit()
     return updated
 
@@ -160,6 +162,7 @@ def save_failure_templates(config, subject, body, body_format="plain"):
             ON CONFLICT(id) DO UPDATE SET subject=excluded.subject, body=excluded.body,
             body_format=excluded.body_format, updated_at=excluded.updated_at""",
                    (subject, body, body_format, updated))
+        event(db, "template.updated", "failure")
         db.commit()
     return updated
 

@@ -1,26 +1,19 @@
-import base64
-import hashlib
-import hmac
 import html
 import json
-import logging
-import threading
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, urlparse
 from zoneinfo import ZoneInfo
 
-from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
+from flask import g, has_request_context
+from .security import allowed, csrf_token
+
 from .brokerage_report import PERIODS, brokerage_statistics
-from .database import connect, init_db
+from .database import connect
 from .emailer import EmailError, resolve_recipients
-from .job import deliver_audit
-from .outcomes import deliver_failure_notice, record_outcome
 from .report import daily_audit_report
-from .settings import display_percent, save_selection_percent, selection_percent
+from .settings import display_percent, selection_percent
 from .simulation import simulate_cycle
 from .templates import (FIELDS, FAILURE_FIELDS, clean_html, current_failure_templates, current_templates,
-                        format_message_parts, plain_to_html, save_failure_templates, save_templates, validate_templates)
+                        format_message_parts, plain_to_html, validate_templates)
 
 
 def esc(value):
@@ -52,7 +45,7 @@ def recipients(value):
 
 
 def retry_token(config, audit_id):
-    return hmac.new(config.password.encode(), f"retry:{audit_id}".encode(), hashlib.sha256).hexdigest()
+    return csrf_token(config, audit_id)
 
 
 def template_editor(config, values=None, error="", kind="request"):
@@ -261,6 +254,9 @@ def brokerage_view(config, period):
 
 def render(config, tab="audits", notice="", form_values=None, error="", audit_id=None, preview_outcome=False, period="3m"):
     with connect(config.database_path) as db:
+        if not db.in_transaction:
+            db.execute("BEGIN")
+        revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
         counts = {
             "processed": db.execute("SELECT count(*) FROM listings").fetchone()[0],
             "selected": db.execute("SELECT count(*) FROM audits").fetchone()[0],
@@ -276,7 +272,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
-    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("reviewers", "Audit team"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email")))
+    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("reviewers", "Audit team"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("users", "Access management"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -286,8 +282,18 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         banner = f'<div class="test-banner"><strong>TEST MODE</strong><span>{esc(detail)}</span></div>'
     else:
         banner = '<div class="prod-banner">PRODUCTION EMAIL ENABLED</div>'
+    if not config.email_enabled:
+        banner = '<div class="test-banner"><strong>EMAIL DISABLED</strong><span>No messages will be sent. Audits and results remain available for review.</span></div>'
+    if config.env == "development":
+        banner = '<div class="test-banner"><strong>DEVELOPMENT SANDBOX</strong><span>Synthetic listings only. Email records are simulated; no messages can be sent. Changes reset on restart.</span></div>'
     cards = "".join(f'<div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{counts[key]}</div></div>' for key, label in (("processed", "Listings considered"), ("selected", "Selected audits"), ("sent", "Emails accepted"), ("failed", "Needs attention")))
-    if tab == "simulation":
+    if tab == "users":
+        title, subtitle = "Access management", "Application roles for individually authenticated people."
+        content = users_view(config)
+    elif tab == "activity":
+        title, subtitle = "Activity log", "Recorded changes and the authenticated person or system responsible."
+        content = activity_view(config)
+    elif tab == "simulation":
         title, subtitle = "Simulation", "Watch a complete audit cycle using synthetic listing data."
         content = simulation_view(config)
     elif tab == "template":
@@ -327,9 +333,12 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                             sort_heading("Assigned to"), sort_heading("History", "number"), sort_heading("Outcome"), "<th>Actions</th>"))
         rows = ""
         for r in audits:
-            retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" else ""
-            outcome = f'<a href="/?tab=outcome&id={r["id"]}">Record result</a>' if not r["outcome"] and r["email_status"] == "email_sent" else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
-            if r["outcome"] == "failed" and r["failure_email_status"] in {"email_pending", "email_failed"} and config.test_window_open():
+            retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
+            outcome = f'<a href="/?tab=outcome&id={r["id"]}">Record result</a>' if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
+            if outcome.startswith("<a "):
+                retry = outcome + retry
+                outcome = "—"
+            if r["outcome"] == "failed" and r["failure_email_status"] in {"email_pending", "email_failed"} and config.test_window_open() and allowed("email.retry"):
                 failure_token = retry_token(config, "failure:" + str(r["id"]))
                 retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}"><button type="submit">Send failed notice</button></form>'
             mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else '<span class="mode-prod">LIVE</span>'
@@ -340,342 +349,52 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 for person in reviewers if person["active"] or person["id"] == r["reviewer_id"])
             assignment_token = retry_token(config, f'assignment:{r["id"]}')
             assignment = f'<form method="post" action="/assignment/{r["id"]}" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><select name="reviewer_id" aria-label="Assign MLS {esc(r["mls_number"])}">{options}</select><button type="submit">Save</button></form>'
+            if not allowed("audits.assign"):
+                assignment = ""
             reviewer_label = ("Previously assigned: " if not r["reviewer_id"] and r["reviewer_name_snapshot"] else "") + (r["reviewer_name"] or "")
             rows += f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td>{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{previous[r["id"]]}">{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report", "brokerages"}:
+    if tab not in {"template", "failure_template", "outcome", "simulation", "reviewers", "admin", "report", "brokerages", "users", "activity"}:
         if not rows:
             rows = f'<tr><td colspan="{12 if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records{" · Click a column heading to sort these records" if tab in {"audits", "listings"} else ""}</p></div><span class="live-dot">● &nbsp; Current data</span></div><div class="table-wrap"><table{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
+    content = content.replace('</form>', f'<input type="hidden" name="revision" value="{revision}"></form>')
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
-<body><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
-<main><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="avatar">AD</div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script></body></html>'''
+<body><a class="skip-link" href="#main">Skip to content</a><button class="menu-toggle" type="button" aria-controls="sidebar" aria-expanded="false">Menu</button><button class="menu-backdrop" type="button" aria-label="Close menu" hidden></button><aside class="sidebar" id="sidebar"><button class="menu-close" type="button">Close menu</button><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
+<main id="main"><header><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div><div class="identity">{esc(g.principal.name) if has_request_context() else "Audit Desk"}<small>{esc(g.principal.role) if has_request_context() else ""}</small></div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main><script src="/static/shell.js" defer></script><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script></body></html>'''
+
+
+
+TAB_CAPABILITIES = {
+    "audits": "audits.read", "listings": "audits.read", "runs": "audits.read",
+    "simulation": "audits.read", "outcome": "audits.result", "reviewers": "reviewers.manage",
+    "admin": "settings.manage", "template": "templates.manage", "failure_template": "templates.manage",
+    "report": "reports.read", "brokerages": "reports.read", "users": "users.manage", "activity": "activity.read",
+}
+
+
+def users_view(config):
+    with connect(config.database_path) as db:
+        users = db.execute("SELECT * FROM app_users ORDER BY email").fetchall()
+    def form(user=None):
+        user = dict(user) if user else {"email": "", "display_name": "", "role": "reviewer", "active": 1, "version": 0}
+        roles = "".join(f'<option value="{role}" {"selected" if role == user["role"] else ""}>{label}</option>' for role, label in (("reviewer", "Reviewer"), ("manager", "Audit manager"), ("admin", "IT administrator")))
+        return f'<form method="post" action="/users" class="access-form"><input type="hidden" name="token" value="{retry_token(config, "users")}"><input type="hidden" name="version" value="{user["version"]}"><label>Email <input type="email" name="email" required value="{html.escape(user["email"], quote=True)}" {"readonly" if user["email"] else ""}></label><label>Display name <input name="display_name" maxlength="100" value="{html.escape(user["display_name"], quote=True)}"></label><label>Role <select name="role">{roles}</select></label><label><input type="checkbox" name="active" value="1" {"checked" if user["active"] else ""}> Active</label><button type="submit">{"Save access" if user["email"] else "Grant access"}</button></form>'
+    return '<section class="panel"><div class="panel-head"><h2>People and roles</h2></div><p class="form-help">Cloudflare verifies identity. Only active people listed here may use AuditDesk. Bootstrap administrators are protected.</p>' + "".join(form(user) for user in users) + '<h3 class="form-help">Add a person</h3>' + form() + '</section>'
+
+
+def activity_view(config):
+    with connect(config.database_path) as db:
+        events = db.execute("""SELECT e.*,u.email FROM activity_events e LEFT JOIN app_users u ON u.subject=e.actor
+            ORDER BY e.id DESC LIMIT 200""").fetchall()
+    rows = "".join(f'<tr><td>{esc(e["occurred_at"])}</td><td>{esc(e["email"] or e["actor"])}</td><td>{esc(e["action"])}</td><td>{esc(e["target"])}</td><td>{esc(e["detail"])}</td></tr>' for e in events)
+    return '<section class="panel"><div class="panel-head"><h2>Latest 200 changes</h2><a href="/activity.csv">Export CSV</a></div><div class="table-wrap"><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>' + (rows or '<tr><td colspan="5">No changes recorded yet.</td></tr>') + '</tbody></table></div></section>'
 
 
 def serve(config):
-    if not config.password:
-        raise ValueError("APP_PASSWORD is required to serve the staff interface")
-    init_db(config.database_path)
-    if config.wake_catchup:
-        from .job import run_job
-        from datetime import timezone
-        def catch_up_after_wake():
-            while True:
-                try:
-                    if config.test_window_open():
-                        run_job(config, only_if_needed=True)
-                except Exception:
-                    logging.getLogger("audit_app.web").exception("wake_catchup_failed")
-                threading.Event().wait(300)
-        threading.Thread(target=catch_up_after_wake, name="audit-wake-catchup", daemon=True).start()
-    from pathlib import Path
-    try:
-        stylesheet = (Path(__file__).parent / "static" / "app.css").read_bytes()
-    except OSError:
-        stylesheet = b"@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');\n:root{font-family:'DM Sans',system-ui,sans-serif;color:#182431;background:#f5f6f7;font-size:14px}*{box-sizing:border-box}body{margin:0;display:flex;min-height:100vh}a{color:inherit;text-decoration:none}.sidebar{width:246px;background:#133657;color:#e8eef3;min-height:100vh;padding:30px 16px;display:flex;flex-direction:column;flex-shrink:0}.brand{display:flex;align-items:center;gap:12px;padding:0 10px 54px}.brand-mark{width:38px;height:38px;background:#91c0ef;color:#14293e;border-radius:11px;display:grid;place-items:center;font-family:'Plus Jakarta Sans',sans-serif;font-size:22px;font-weight:800}.brand strong{display:block;font:800 18px 'Plus Jakarta Sans',sans-serif;letter-spacing:-.04em}.brand small{display:block;font-size:9px;letter-spacing:.2em;color:#a8b8c8;margin-top:3px;font-weight:700}.sidebar-label{font-size:10px;font-weight:700;color:#8496a9;letter-spacing:.18em;padding:0 16px;margin-bottom:14px}.sidebar nav{display:grid;gap:5px}.nav-item{padding:13px 16px;border-radius:10px;color:#c5d0dc;font-weight:600}.nav-item:hover,.nav-item.active{background:#243c54;color:white}.nav-item.active{box-shadow:inset 3px 0 #91c0ef}.sidebar-foot{margin-top:auto;border-top:1px solid #324960;padding:22px 10px 0;color:#a3b0be;font-size:11px}main{padding:42px 48px 20px;width:calc(100% - 246px);min-width:0;max-width:1800px;margin:auto}header{display:flex;align-items:start;justify-content:space-between;margin-bottom:26px}.eyebrow{font-size:10px;letter-spacing:.19em;color:#6a7b8c;font-weight:800;margin-bottom:10px}h1,h2{font-family:'Plus Jakarta Sans',sans-serif;letter-spacing:-.04em}h1{font-size:31px;margin:0 0 6px}header p,.panel-head p{color:#727c85;margin:0}.avatar{width:38px;height:38px;border:1px solid #d5dbe1;background:white;border-radius:50%;display:grid;place-items:center;color:#3d4f62;font-size:11px;font-weight:800}.test-banner{background:#fff0d1;border:2px solid #f5aa2c;color:#6e3d06;border-radius:13px;padding:15px 20px;display:flex;align-items:center;gap:17px;margin:0 0 25px;box-shadow:0 5px 15px #a8660d12}.test-banner strong{background:#c4471b;color:white;padding:6px 10px;border-radius:5px;font:800 12px 'Plus Jakarta Sans',sans-serif;letter-spacing:.08em;white-space:nowrap}.test-banner span{font-weight:700}.prod-banner{background:#fee4df;border:2px solid #bb4434;color:#9b281b;padding:15px 20px;border-radius:13px;font-weight:800;letter-spacing:.05em;margin-bottom:25px}.notice{padding:13px 17px;background:#e1eaf2;color:#243b53;border-radius:9px;margin-bottom:20px}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:26px}.stat{background:white;border:1px solid #e1e5e9;box-shadow:0 2px 8px #24334207;border-radius:13px;padding:21px 23px;min-height:110px}.stat-label{font-weight:700;color:#798490;font-size:12px;margin-bottom:12px}.stat-value{font:800 29px 'Plus Jakarta Sans',sans-serif;color:#172b3f;line-height:1}.panel{background:white;border:1px solid #e1e5e9;border-radius:14px;box-shadow:0 4px 18px #24334209;overflow:hidden}.panel-head{padding:24px 26px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e9ecef}.panel-head h2{font-size:17px;margin:0 0 5px}.panel-head p{font-size:12px}.live-dot{color:#4f6c89;font-size:11px;font-weight:700}.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:1040px}th{background:#f9fafb;color:#808a93;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:14px 18px;white-space:nowrap}td{border-top:1px solid #edeff1;padding:16px 18px;vertical-align:top;color:#3a4551;font-size:12px;line-height:1.45;max-width:245px}td strong{color:#1d2f42;font-weight:800;display:block}td small{display:block;color:#838c94;margin-top:5px;font-size:11px;line-height:1.35}td .muted{color:#87919b;font-weight:700}.badge{border-radius:30px;padding:5px 8px;font-size:10px;font-weight:800;display:inline-block;white-space:nowrap}.badge.good{background:#e5eef6;color:#284e74}.badge.bad{background:#fce6e2;color:#b13e36}.badge.neutral{background:#eef0f1;color:#606b76}.mode-test,.mode-prod{font-size:9px;font-weight:900;letter-spacing:.06em;padding:4px 6px;border-radius:3px;margin-right:4px}.mode-test{background:#fff0cf;color:#a05c00}.mode-prod{background:#fce0dd;color:#a72e20}.error{color:#b95a4b!important}.empty{text-align:center;padding:60px;color:#8b959f}button{border:1px solid #b9c6d4;color:#234465;background:#f1f5f9;border-radius:7px;padding:7px 10px;font:700 11px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}button:hover{background:#dfe8f2}footer{font-size:11px;color:#a2a8ae;text-align:center;padding:30px}@media(max-width:900px){body{display:block}.sidebar{width:100%;min-height:auto;padding:15px;display:block}.brand{padding:0 4px 14px}.sidebar-label,.sidebar-foot{display:none}.sidebar nav{display:flex;overflow:auto}.nav-item{white-space:nowrap;padding:10px}main{width:100%;padding:25px 18px}.stats{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){.stats{gap:8px}.stat{padding:16px}.stat-value{font-size:23px}.test-banner{align-items:start;flex-direction:column;gap:9px}h1{font-size:26px}}\n.template-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(330px,.9fr);gap:20px;align-items:start}.template-form{padding:24px 26px}.template-form label{display:block;font-size:12px;font-weight:800;color:#394a5b;margin:0 0 8px}.template-form input[name=subject],.template-form textarea{display:block;width:100%;border:1px solid #cbd2d9;background:#fbfcfd;color:#192939;border-radius:9px;padding:12px 14px;font:500 13px 'DM Sans',system-ui,sans-serif;line-height:1.5;outline:none;margin-bottom:22px}.template-form input:focus,.template-form textarea:focus{border-color:#5d7e9f;box-shadow:0 0 0 3px #dce6ef}.template-form textarea{resize:vertical;min-height:280px}.tag-caption{font-size:11px;font-weight:800;color:#606f7f;margin-bottom:10px}.tag-row{display:flex;flex-wrap:wrap;gap:8px}.tag-button{background:#edf1f5;border-color:#d5dee7;padding:8px 10px}.tag-button code{font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace}.form-help{color:#717c87;font-size:11px;line-height:1.55;margin:16px 0 20px}.form-actions{display:flex;justify-content:flex-end;gap:10px}.form-actions button{font-size:12px;padding:10px 15px}.primary-button{background:#1e3d5c;color:white;border-color:#1e3d5c}.primary-button:hover{background:#172f47}.form-error{background:#fff0ed;color:#9d3024;border:1px solid #e9b8ae;border-radius:8px;padding:11px 13px;margin-bottom:18px;font-weight:700}.preview-content{padding:24px 26px}.preview-subject{font-weight:800;color:#16283b;padding-bottom:16px;border-bottom:1px solid #e3e7eb;overflow-wrap:anywhere}.preview-body{font:12px/1.65 'DM Sans',system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;color:#394756;margin:18px 0 0}.preview-empty{color:#858e98}.template-panel,.preview-panel{min-width:0}@media(max-width:1100px){.template-grid{grid-template-columns:1fr}}\n.format-toolbar{display:flex;gap:7px;margin-bottom:8px}.format-button{min-width:34px;min-height:32px;font-size:14px;background:#f7f8fa}.format-button:focus-visible,.tag-button:focus-visible{outline:3px solid #b7cbdf}.body-editor{width:100%;min-height:280px;max-height:540px;overflow:auto;border:1px solid #cbd2d9;background:#fbfcfd;color:#192939;border-radius:9px;padding:12px 14px;font:500 13px/1.55 'DM Sans',system-ui,sans-serif;outline:none;margin-bottom:22px;white-space:pre-wrap;overflow-wrap:anywhere}.body-editor:focus{border-color:#5d7e9f;box-shadow:0 0 0 3px #dce6ef}.body-editor strong,.preview-body strong{font-weight:800}.body-editor em,.preview-body em{font-style:italic}.body-editor u,.preview-body u{text-decoration:underline}\n.outcome-panel{max-width:1050px}.outcome-content{padding:26px}.outcome-content h3{font-size:14px;color:#26384b;margin:24px 0 10px}.outcome-content label{display:block;font-weight:800;color:#394a5b;margin:24px 0 9px}.outcome-content textarea{display:block;width:100%;max-width:800px;min-height:140px;padding:12px 14px;border:1px solid #cbd2d9;border-radius:9px;font:13px/1.55 'DM Sans',system-ui,sans-serif}.outcome-content textarea:focus{outline:3px solid #dce6ef}.outcome-content p{color:#64707d;font-size:12px;line-height:1.6}.pass-form{padding-bottom:20px;border-bottom:1px solid #e3e7eb}.failure-form>button{margin-top:8px}.outcome-preview{margin-top:25px;padding:22px;border:1px solid #d9e0e6;border-radius:11px;background:#fbfcfd}.outcome-preview .preview-body{background:#fff;border:1px solid #edeff1;border-radius:8px;padding:18px;max-height:460px;overflow:auto}.outcome-preview .primary-button{margin-top:18px}.outcome-issues{white-space:pre-wrap;font:13px/1.6 'DM Sans',system-ui,sans-serif;color:#24313f;background:#f8fafb;border:1px solid #e2e8ed;padding:15px;border-radius:8px}.table-wrap td small{overflow-wrap:anywhere}\n.sim-alert{display:flex;gap:16px;align-items:center;background:#e4f0f7;border:1px solid #a9cddf;color:#28546a;border-radius:12px;padding:16px 20px;margin-bottom:22px}.sim-alert strong{background:#2a6c8e;color:white;border-radius:5px;padding:7px 10px;font-size:10px;letter-spacing:.08em;white-space:nowrap}.sim-alert span{font-weight:600;font-size:12px}.sim-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}.sim-summary>div{background:white;border:1px solid #e1e5e9;border-radius:12px;padding:18px 20px}.sim-summary span{display:block;color:#7c8691;font-size:11px;font-weight:700;margin-bottom:8px}.sim-summary strong{color:#172f47;font:800 23px 'Plus Jakarta Sans',sans-serif}.sim-flow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0}.sim-step{display:flex;gap:16px;padding:25px 27px;border-bottom:1px solid #e9ecef}.sim-step:nth-child(odd){border-right:1px solid #e9ecef}.sim-step h3{font:800 14px 'Plus Jakarta Sans',sans-serif;margin:0 0 8px;color:#1f3449}.sim-step strong{display:block;font-size:12px;color:#394756;line-height:1.55}.sim-step p{font-size:11px;color:#828c95;line-height:1.55;margin:6px 0 0}.sim-index{height:30px;min-width:30px;display:grid;place-items:center;background:#e8edf2;color:#335272;border-radius:8px;font:800 11px 'Plus Jakarta Sans',sans-serif}@media(max-width:950px){.sim-summary{grid-template-columns:repeat(2,1fr)}.sim-flow{grid-template-columns:1fr}.sim-step:nth-child(odd){border-right:0}}@media(max-width:520px){.sim-alert{align-items:start;flex-direction:column}}\n"
-
-    class Handler(BaseHTTPRequestHandler):
-        def authorized(self):
-            header = self.headers.get("Authorization", "")
-            try:
-                raw = base64.b64decode(header.removeprefix("Basic "), validate=True).decode()
-                username, password = raw.split(":", 1)
-            except (ValueError, UnicodeDecodeError):
-                username, password = "", ""
-            return hmac.compare_digest(username, config.username) and hmac.compare_digest(password, config.password)
-
-        def require_auth(self):
-            if self.authorized():
-                return True
-            self.send_response(401)
-            self.send_header("WWW-Authenticate", 'Basic realm="Audit Desk"')
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return False
-
-        def do_GET(self):
-            if not self.require_auth():
-                return
-            path = urlparse(self.path)
-            if path.path == "/static/app.css":
-                body = stylesheet
-                content_type = "text/css; charset=utf-8"
-            elif path.path == "/static/sort.js":
-                body = (Path(__file__).parent / "static" / "sort.js").read_bytes()
-                content_type = "text/javascript; charset=utf-8"
-            elif path.path == "/static/branches.js":
-                body = (Path(__file__).parent / "static" / "branches.js").read_bytes()
-                content_type = "text/javascript; charset=utf-8"
-            elif path.path == "/static/cornerstone-logo-white.png":
-                body = (Path(__file__).parent / "static" / "cornerstone-logo-white.png").read_bytes()
-                content_type = "image/png"
-            elif path.path == "/reports/brokerages.pdf":
-                period = parse_qs(path.query).get("period", ["3m"])[0]
-                if period not in PERIODS:
-                    self.send_error(400, "Invalid report period")
-                    return
-                from .brokerage_pdf import build_brokerage_pdf
-                try:
-                    body = build_brokerage_pdf(brokerage_statistics(config, period))
-                except ImportError:
-                    self.send_error(503, "PDF export dependency is unavailable")
-                    return
-                content_type = "application/pdf"
-            elif path.path == "/":
-                query = parse_qs(path.query)
-                tab = query.get("tab", ["audits"])[0]
-                if tab not in {"audits", "reviewers", "listings", "runs", "template", "failure_template", "outcome", "simulation", "admin", "report", "brokerages"}:
-                    tab = "audits"
-                audit_id = query.get("id", [""])[0]
-                if tab == "outcome" and not audit_id.isdigit():
-                    tab = "audits"
-                period = query.get("period", ["3m"])[0]
-                if period not in PERIODS:
-                    period = "3m"
-                body = render(config, tab, query.get("notice", [""])[0], audit_id=int(audit_id) if tab == "outcome" else None, period=period).encode()
-                content_type = "text/html; charset=utf-8"
-            else:
-                self.send_error(404)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            if content_type == "application/pdf":
-                self.send_header("Content-Disposition", f'attachment; filename="cornerstone-brokerage-statistics-{period}.pdf"')
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_POST(self):
-            if not self.require_auth():
-                return
-            origin = self.headers.get("Origin")
-            host = self.headers.get("Host")
-            if origin and urlparse(origin).netloc != host:
-                self.send_error(403)
-                return
-            if self.path == "/admin/selection-rate":
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 1024:
-                    self.send_error(413)
-                    return
-                try:
-                    form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-                except UnicodeDecodeError:
-                    self.send_error(400)
-                    return
-                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, "selection-rate")):
-                    self.send_error(403)
-                    return
-                value = form.get("rate_percent", [""])[0]
-                try:
-                    save_selection_percent(config, value)
-                except ValueError as exc:
-                    page = render(config, "admin", form_values=value, error=str(exc)).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Cache-Control", "no-store")
-                    self.send_header("Content-Length", str(len(page)))
-                    self.end_headers()
-                    self.wfile.write(page)
-                    return
-                self.send_response(303)
-                self.send_header("Location", "/?tab=admin&notice=" + quote("Selection percentage saved for future runs."))
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            if self.path == "/reviewers" or self.path.startswith("/reviewers/") or self.path.startswith("/assignment/"):
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 2048:
-                    self.send_error(413)
-                    return
-                try:
-                    form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-                except UnicodeDecodeError:
-                    self.send_error(400)
-                    return
-                if self.path == "/reviewers":
-                    token_key = "reviewers"
-                    item_id = None
-                else:
-                    prefix, _, item = self.path.rpartition("/")
-                    if not item.isdigit() or prefix not in {"/reviewers", "/assignment"}:
-                        self.send_error(404)
-                        return
-                    item_id = int(item)
-                    token_key = ("reviewer:" if prefix == "/reviewers" else "assignment:") + item
-                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, token_key)):
-                    self.send_error(403)
-                    return
-                tab = "audits" if self.path.startswith("/assignment/") else "reviewers"
-                try:
-                    if self.path == "/reviewers":
-                        add_reviewer(config, form.get("name", [""])[0])
-                        notice = "Name added to the audit team."
-                    elif tab == "reviewers":
-                        action = form.get("action", [""])[0]
-                        if action == "rename":
-                            rename_reviewer(config, item_id, form.get("name", [""])[0])
-                            notice = "Name updated."
-                        elif action in {"activate", "deactivate"}:
-                            set_reviewer_active(config, item_id, action == "activate")
-                            notice = "Audit team list updated."
-                        elif action == "delete":
-                            delete_reviewer(config, item_id)
-                            notice = "Name deleted. Any affected open audits need reassignment."
-                        else:
-                            self.send_error(400)
-                            return
-                    else:
-                        value = form.get("reviewer_id", [""])[0]
-                        if value and not value.isdigit():
-                            raise ValueError("Choose a name from the list.")
-                        assign_reviewer(config, item_id, int(value) if value else None)
-                        notice = "Audit assignment updated."
-                except ValueError as exc:
-                    if tab == "reviewers":
-                        page = render(config, tab, error=str(exc)).encode()
-                        self.send_response(200)
-                        self.send_header("Content-Type", "text/html; charset=utf-8")
-                        self.send_header("Cache-Control", "no-store")
-                        self.send_header("Content-Length", str(len(page)))
-                        self.end_headers()
-                        self.wfile.write(page)
-                        return
-                    notice = str(exc)
-                self.send_response(303)
-                self.send_header("Location", "/?tab=" + tab + "&notice=" + quote(notice))
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            if self.path in {"/template", "/failure-template"}:
-                failure = self.path == "/failure-template"
-                kind = "failure" if failure else "request"
-                tab = "failure_template" if failure else "template"
-                subject, body = "", ""
-                try:
-                    length = int(self.headers.get("Content-Length", "0"))
-                    if not 0 < length <= 32768:
-                        self.send_error(413)
-                        return
-                    form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-                    token = form.get("token", [""])[0]
-                    if not hmac.compare_digest(token, retry_token(config, "failure-template" if failure else "template")):
-                        self.send_error(403)
-                        return
-                    subject = form.get("subject", [""])[0]
-                    body = form.get("body", [""])[0]
-                    action = form.get("action", [""])[0]
-                    if action not in {"preview", "save"}:
-                        self.send_error(400)
-                        return
-                    body_format = form.get("body_format", ["plain"])[0]
-                    validate_templates(subject, body, body_format, kind)
-                    if action == "save":
-                        (save_failure_templates if failure else save_templates)(config, subject, body, body_format)
-                        self.send_response(303)
-                        self.send_header("Location", "/?tab=" + tab + "&notice=Template%20saved%20for%20future%20emails.")
-                        self.send_header("Content-Length", "0")
-                        self.end_headers()
-                        return
-                    page = render(config, tab, form_values=(subject, body, body_format)).encode()
-                except (UnicodeDecodeError, ValueError) as exc:
-                    page = render(config, tab, form_values=(subject, body, form.get("body_format", ["plain"])[0] if "form" in locals() else "plain"), error=str(exc)).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(page)))
-                self.end_headers()
-                self.wfile.write(page)
-                return
-            if self.path.startswith("/outcome/") and self.path[9:].isdigit():
-                audit_id = int(self.path[9:])
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 12000:
-                    self.send_error(413)
-                    return
-                form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, f"outcome:{audit_id}")):
-                    self.send_error(403)
-                    return
-                outcome = form.get("outcome", [""])[0]
-                action = form.get("action", [""])[0]
-                issues = form.get("issues", [""])[0]
-                try:
-                    if outcome == "passed" and action == "record":
-                        record_outcome(config, audit_id, "passed")
-                    elif outcome == "failed" and action == "preview":
-                        if not issues.strip():
-                            raise ValueError("Describe the issues before previewing the notice.")
-                        page = render(config, "outcome", form_values=issues, audit_id=audit_id, preview_outcome=True).encode()
-                        self.send_response(200)
-                        self.send_header("Content-Type", "text/html; charset=utf-8")
-                        self.send_header("Cache-Control", "no-store")
-                        self.send_header("Content-Length", str(len(page)))
-                        self.end_headers()
-                        self.wfile.write(page)
-                        return
-                    elif outcome == "failed" and action == "send":
-                        record_outcome(config, audit_id, "failed", issues)
-                    else:
-                        self.send_error(400)
-                        return
-                except ValueError as exc:
-                    page = render(config, "outcome", form_values=issues, error=str(exc), audit_id=audit_id).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Cache-Control", "no-store")
-                    self.send_header("Content-Length", str(len(page)))
-                    self.end_headers()
-                    self.wfile.write(page)
-                    return
-                self.send_response(303)
-                self.send_header("Location", "/?tab=audits&notice=Audit%20result%20recorded.%20Check%20notice%20status%20below.")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            if self.path.startswith("/failure-retry/") and self.path[15:].isdigit():
-                audit_id = int(self.path[15:])
-                length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 2048:
-                    self.send_error(413)
-                    return
-                form = parse_qs(self.rfile.read(length).decode("utf-8"), keep_blank_values=True)
-                if not hmac.compare_digest(form.get("token", [""])[0], retry_token(config, f"failure:{audit_id}")):
-                    self.send_error(403)
-                    return
-                with connect(config.database_path) as db:
-                    row = db.execute("SELECT failure_email_status FROM audits WHERE id=?", (audit_id,)).fetchone()
-                sent = deliver_failure_notice(config, audit_id, retry=bool(row and row["failure_email_status"] == "email_failed"))
-                self.send_response(303)
-                self.send_header("Location", "/?tab=audits&notice=" + quote("Failed-audit notice accepted by SendGrid." if sent else "Notice was not sent. Check its status."))
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            if not self.path.startswith("/retry/") or not self.path[7:].isdigit():
-                self.send_error(404)
-                return
-            audit_id = int(self.path[7:])
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 2048:
-                self.send_error(413)
-                return
-            form = parse_qs(self.rfile.read(length).decode())
-            token = form.get("token", [""])[0]
-            if not hmac.compare_digest(token, retry_token(config, audit_id)):
-                self.send_error(403)
-                return
-            result = deliver_audit(config, audit_id, retry=True)
-            notice = "Email retry accepted by SendGrid." if result else "Retry was not sent. Check its status and error below."
-            self.send_response(303)
-            self.send_header("Location", "/?notice=" + quote(notice))
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-
-        def log_message(self, format, *args):
-            logging.getLogger("audit_app.web").info("request %s", self.path.split("?")[0])
-
-    server = ThreadingHTTPServer((config.host, config.port), Handler)
-    print(f"Audit Desk at http://{config.host}:{config.port}")
-    server.serve_forever()
+    from .application import create_app
+    from .runtime import start_runtime
+    app = create_app(config)
+    config = app.extensions["auditdesk_config"]
+    app.extensions["auditdesk_runtime"] = start_runtime(config)
+    app.run(host=config.host, port=config.port, debug=False)

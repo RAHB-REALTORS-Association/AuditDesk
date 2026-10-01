@@ -72,7 +72,7 @@ def _listing(number, office, broker, entered, status="Active"):
 def simulate_cycle(config):
     now = datetime.now(timezone.utc).replace(microsecond=0)
     with tempfile.TemporaryDirectory(prefix="mls-audit-demo-") as folder:
-        demo_config = replace(config, env="test", database_path=str(Path(folder) / "demo.sqlite3"),
+        demo_config = replace(config, env="test", email_enabled=True, test_end_at=None, database_path=str(Path(folder) / "demo.sqlite3"),
                               admin_email="admin@example.invalid", sendgrid_key="", rate=0.05)
         init_db(demo_config.database_path)
         previous_at = (now - timedelta(days=1)).isoformat(timespec="seconds")

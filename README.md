@@ -2,19 +2,29 @@
 
 A small internal application for selecting new Active Bridge listings for paperwork audits. The daily job records every listing considered, uses a configurable selection lottery, applies brokerage and broker cooldowns, then sends selected requests through SendGrid. The staff page shows audit history and failed-email retries.
 
+See [Deployment](docs/DEPLOYMENT.md) for Coolify, Cloudflare Access, backup, and releases; [Roles and workflows](docs/USER_GUIDE.md) for staff instructions.
+
 ## Start the staff interface
 
-The interface runs at **http://127.0.0.1:8765**. Start it with:
+The server listens on **127.0.0.1:8765**. Development opens directly at that address with synthetic listings and a disposable database:
 
 ```sh
-python3 main.py serve
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements.lock
+cp .env.example .env
+python main.py serve
 ```
 
-Sign in with `APP_USERNAME` and `APP_PASSWORD` from the local `.env` file. It binds to localhost by default. For access from other computers, place it behind an authenticated HTTPS reverse proxy; do not expose its Basic Auth endpoint directly to the internet.
+On Windows, activate with `.venv\Scripts\Activate.ps1`, or use Docker for the same Linux runtime as deployment.
 
-The orange **TEST MODE** banner appears whenever `APP_ENV` is `development` or `test`. Production email requires `APP_ENV=production` and complete configuration. Test mode passes only `ADMIN_EMAIL` to SendGrid as a recipient; intended broker, office, and agent addresses appear in the subject/body for diagnosis and in the audit record.
+`APP_ENV=development` is an open sandbox with a fixed demo administrator. It seeds four synthetic audits; fixture delivery records are simulated, never sent. Every startup creates a fresh temporary database, ignoring `DATABASE_PATH`, Bridge/SendGrid credentials, Access settings, real administrator addresses, session keys, test cutoffs, and email/scheduler enable flags. Real Bridge clients and email delivery are also blocked at their final boundaries. Form protection remains enabled. No Basic Auth exists.
 
-For a time-limited live-data test, set `APP_ENV=test` and `TEST_MODE_END_AT` to an ISO 8601 timestamp with an offset, such as `2026-09-28T00:00:00-04:00`. Once that time passes, scheduled runs record `test_window_closed` without querying Bridge, and both scheduled and manual email sends are blocked. The launchd schedule remains installed until removed.
+`APP_ENV=test` uses real Bridge listings and Cloudflare Access, and redirects enabled email exclusively to `ADMIN_EMAIL`. `APP_ENV=production` requires Cloudflare Access and sends enabled mail to actual recipients. Both modes use persistent storage and require issuer, audience, public HTTPS origin and bootstrap application administrator configuration.
+
+PR previews use `auditdesk-pr{{pr_id}}.oncornerstone.app`, development mode and no persistent volume. Set preview-only `PUBLIC_BASE_URL=auto` so the app derives the HTTPS browser origin from Coolify's generated `COOLIFY_URL`. Local development uses `PUBLIC_BASE_URL=http://127.0.0.1:8765`. Preview edits reset on restart.
+
+For a time-limited live-data test, set `APP_ENV=test` and `TEST_MODE_END_AT` to an ISO 8601 timestamp with an offset, such as `2026-09-28T00:00:00-04:00`. Once that time passes, scheduled runs record `test_window_closed` without querying Bridge, and both scheduled and manual email sends are blocked. Scheduling can be disabled independently with `SCHEDULER_ENABLED=false`.
 
 ## Edit the audit email
 
@@ -32,11 +42,11 @@ Edit the follow-up wording under **Admin → Failed-audit email**. Its subject a
 
 ## Track who is working on an audit
 
-Open **Admin → Audit team** to add names, correct a name, remove a name from future assignments, or delete its roster entry. **Remove from list** can be undone. **Delete** removes the name from the roster and frees it for reuse; an unfinished audit assigned to that person shows **Needs reassignment** and retains the former name for context. Completed audits keep their result and former assignee name. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The staff login is shared, so the selected name is a manual assignment rather than an authenticated user identity.
+Open **Admin → Audit team** to add names, correct a name, remove a name from future assignments, or delete its roster entry. **Remove from list** can be undone. **Delete** removes the name from the roster and frees it for reuse; an unfinished audit assigned to that person shows **Needs reassignment** and retains the former name for context. Completed audits keep their result and former assignee name. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The roster controls work assignment. The authenticated user who makes a change is recorded separately in the activity log.
 
 ## Change the audit selection percentage
 
-Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. The current shared dashboard login can access Admin settings.
+Open **Admin → Selection settings** to set a percentage from 0% to 100%, with up to two decimal places. The saved value applies to new listings in future runs without restarting the app. It does not reselect listings already processed, change earlier audit records, or reopen an ended test window. The setting is stored in the local audit database; `AUDIT_RATE` in `.env` is the starting value until an Admin value is saved. Audit managers and IT administrators can change selection settings.
 
 ## Review daily audit volume
 
@@ -54,33 +64,19 @@ Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. Thi
 
 ## Configuration
 
-Copy `.env.example` to `.env`, add the Bridge and SendGrid keys, a verified sender address, an administrator address, and a long staff password. `.env` is ignored by Git. Environment variables override `.env` values.
+Copy `.env.example` to `.env` and configure the desired authentication and integration settings. Keep email and scheduling disabled until the staging workflow is verified. `.env` is ignored by Git. Environment variables override `.env` values.
 
-Keep the SQLite database in `~/Library/Application Support/MLS Audit Desk/`. The macOS login service can access that folder reliably; keeping the runtime database under Documents caused intermittent file-access errors on this Mac.
+Development always uses temporary synthetic storage. Test/production use `DATABASE_PATH` (default `./data/audit.sqlite3`), with `/app/data/audit.sqlite3` on a persistent volume in Coolify.
 
 Run `python3 main.py inspect-bridge` to validate field mappings against the live `itso` OData metadata. `bridge_fields.json` documents the exact fields used. If Bridge changes the dataset, update the mapping and rerun inspection before restarting the job.
 
-Run the job manually with `python3 main.py run`. It queries a rolling 24-hour window, with both Active status and entry time restricted server-side. Runs use a file lock and unique listing/audit constraints. A second run over the same listings creates no new audits or emails.
+In test/production, run the job manually with `python3 main.py run`. It queries a rolling 24-hour window, with both Active status and entry time restricted server-side. Runs use a file lock and unique listing/audit constraints. A second run over the same listings creates no new audits or emails.
 
 ## Daily schedule
 
-The included macOS launchd file runs the job daily at **8:00 a.m. local machine time**. Keep the Mac's timezone set to America/Toronto. The launchd files assume the project is at `~/Documents/Audit App`. If you put it elsewhere, update the `cd` command in each plist before installing. They contain no credentials or personal home-directory path. Install the daily job with:
+In test/production, set `SCHEDULER_ENABLED=true` to let the single application process check every five minutes for the daily 8:00 a.m. run in `APP_TIMEZONE` (default America/Toronto). It retries failed intake, deduplicates completed days, and resumes from the last successful intake boundary after downtime. Keep it false for UI-only staging. There are no operating-system-specific background services to install.
 
-For a laptop that may sleep at 8:00 a.m., set `WAKE_CATCHUP=true` while the dashboard service is running. After the Mac wakes, the dashboard checks whether a run has occurred since that morning's 8:00 a.m. boundary and starts one if needed. The check runs every five minutes while the dashboard is active. It uses the same job lock and listing deduplication as the scheduled run.
-
-```sh
-cp launchd/com.cornerstone.mls-audit.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cornerstone.mls-audit.plist
-```
-
-To remove the schedule, run `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.cornerstone.mls-audit.plist`.
-
-The interface can also be started automatically at login:
-
-```sh
-cp launchd/com.cornerstone.mls-audit-ui.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cornerstone.mls-audit-ui.plist
-```
+The first run uses `LISTING_WINDOW_HOURS`; subsequent successful intake boundaries allow recovery across longer outages. Listings that became inactive during an outage remain excluded by the product's Active-only rule. This is not a complete historical MLS replication service.
 
 ## Selection and delivery
 

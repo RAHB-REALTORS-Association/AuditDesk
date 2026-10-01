@@ -1,10 +1,33 @@
 import json
+import logging
+import math
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+
+
+LOG = logging.getLogger(__name__)
+
+
+def retry_after_seconds(value, now=None):
+    """Accept either Retry-After format without retrying before the server permits."""
+    if not value:
+        return None
+    try:
+        delay = float(value)
+        return max(0, delay) if math.isfinite(delay) else None
+    except ValueError:
+        try:
+            deadline = parsedate_to_datetime(value)
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
+            return max(0, (deadline - (now or datetime.now(timezone.utc))).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
 
 
 class BridgeError(Exception):
@@ -20,6 +43,8 @@ def office_address(office, fields):
 
 class BridgeClient:
     def __init__(self, config):
+        if config.env == "development":
+            raise BridgeError("Live Bridge access is unavailable in development")
         self.config = config
         self.base = config.bridge_base_url.rstrip("/")
         if not self.base.startswith("https://"):
@@ -31,6 +56,8 @@ class BridgeClient:
         self.offices = {}
 
     def _get(self, url):
+        if self.config.env == "development":
+            raise BridgeError("Live Bridge access is unavailable in development")
         if not url.startswith(self.base + "/"):
             raise BridgeError("Bridge pagination URL left the configured dataset")
         headers = {"Accept": "application/json"}
@@ -41,17 +68,24 @@ class BridgeClient:
             query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
             query.append(("access_token", self.config.bridge_key))
             url = urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment))
-        for attempt in range(3):
+        for attempt in range(6):
+            delay = 2 ** attempt
             try:
                 with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as response:
                     return response.read()
             except urllib.error.HTTPError as exc:
-                if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                exc.close()
+                if exc.code not in (429, 500, 502, 503, 504) or attempt == 5:
                     raise BridgeError(f"Bridge returned HTTP {exc.code}") from None
+                requested = retry_after_seconds(exc.headers.get("Retry-After") if exc.headers else None)
+                delay = requested if requested is not None else (min(60 * 2 ** attempt, 900) if exc.code == 429 else delay)
+                if delay > 900:
+                    raise BridgeError("Bridge requires a retry delay above 15 minutes; retry intake later") from None
+                LOG.warning("bridge_retry status=%s delay_seconds=%s", exc.code, delay)
             except (urllib.error.URLError, TimeoutError):
-                if attempt == 2:
+                if attempt == 5:
                     raise BridgeError("Bridge request failed after retries") from None
-            time.sleep(2 ** attempt)
+            time.sleep(delay)
 
     def inspect_metadata(self):
         root = ET.fromstring(self._get(self.base + "/$metadata"))
