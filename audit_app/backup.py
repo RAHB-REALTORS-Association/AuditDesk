@@ -23,6 +23,8 @@ def validate(path):
 
 
 def backup(config, destination):
+    if config.env == "development":
+        raise ValueError("Development data is disposable; backup is unavailable")
     target = Path(destination).resolve()
     if target == Path(config.database_path).resolve():
         raise ValueError("Backup destination cannot be the live database")
@@ -40,6 +42,8 @@ def backup(config, destination):
 
 
 def restore(config, source, confirmation):
+    if config.env == "development":
+        raise ValueError("Development only permits synthetic fixtures; restore is unavailable")
     if confirmation != "RESTORE STOPPED AUDITDESK":
         raise ValueError("Stop AuditDesk and supply --confirm 'RESTORE STOPPED AUDITDESK'")
     source = Path(source).resolve()

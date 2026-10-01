@@ -10,6 +10,10 @@ Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If ident
 
 No one receives a role automatically merely by signing in. IT can change or disable access under **Access management**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Names in the audit roster describe responsibility for work; the activity log separately records the authenticated person making each change.
 
+## Development previews
+
+A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX banner identifies synthetic data. Delivery records are simulated and no email can be sent, including failed-audit notices or retries. Edits, assignments and results are available for UI testing and reset on restart. Real keys and enable flags cannot activate integrations.
+
 ## Everyday audit work
 
 1. Review Audit history. Selected listings, intended/actual recipients, delivery state, reviewer, and outcome are shown together.

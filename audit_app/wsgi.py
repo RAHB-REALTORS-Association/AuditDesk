@@ -4,4 +4,5 @@ from .runtime import start_runtime
 
 config = load_config()
 app = create_app(config)
+config = app.extensions["auditdesk_config"]
 runtime = start_runtime(config)

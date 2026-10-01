@@ -10,6 +10,14 @@ Application roles are read from SQLite on every request. Unknown and disabled pe
 
 See [Cloudflare JWT validation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) and [Coolify persistent storage](https://coolify.io/docs/applications/configuration/persistent-storage).
 
+## Disposable PR previews
+
+Use the preview template `auditdesk-pr{{pr_id}}.oncornerstone.app`. Preview runtime variables must use `APP_ENV=development`, `PUBLIC_BASE_URL=auto`, `APP_HOST=0.0.0.0`, and `APP_PORT=8765`. `auto` reads Coolify's generated per-PR `COOLIFY_URL` and selects the HTTPS browser origin for Cloudflare's edge TLS. Keep real integration keys out of preview environments. These settings belong to Coolify's separate preview-variable group; staging remains `APP_ENV=test`.
+
+Development opens with a fixed demo administrator and four synthetic audit requests, whose sent records are simulated. It never validates Access identities, queries Bridge, starts the scheduler, or sends request/failure mail. Keys, recipient addresses, enable flags and configured database/session paths are ignored. CSRF, origin, host, input and stale-form checks still apply. Each process creates a fresh temporary SQLite database; edits disappear on restart. Backup/restore and live-data maintenance commands are unavailable in this mode. `main.py run` runs the isolated synthetic simulation.
+
+No persistent volume is needed for previews. The Dockerfile no longer declares an anonymous volume; staging/production retain their explicit Coolify `/app/data` mount. Route preview hostnames through the existing Cloudflare tunnel/ingress and edge wildcard certificate. Cloudflare Access protection for the real staging hostname stays in place.
+
 ## First staging deployment
 
 The existing Coolify application is recorded in `AGENTS.md`; do not create a duplicate. This is a fresh installation, not an import of the original developer's computer database.

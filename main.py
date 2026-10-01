@@ -44,6 +44,8 @@ def main():
     args = parser.parse_args()
     load_dotenv()
     config = load_config()
+    if config.env == "development" and args.command in {"backup", "restore", "backfill-office-addresses", "inspect-bridge"}:
+        parser.error("Development uses disposable synthetic data; live intake and backup/restore commands are unavailable")
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[handler])

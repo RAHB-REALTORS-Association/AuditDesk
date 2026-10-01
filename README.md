@@ -6,22 +6,23 @@ See [Deployment](docs/DEPLOYMENT.md) for Coolify, Cloudflare Access, backup, and
 
 ## Start the staff interface
 
-The server listens on **127.0.0.1:8765**. Access the interface through a Cloudflare Access protected HTTPS hostname, including during interactive development:
+The server listens on **127.0.0.1:8765**. Development opens directly at that address with synthetic listings and a disposable database:
 
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.lock
 cp .env.example .env
-# Configure CF_ACCESS_ISSUER, CF_ACCESS_AUDIENCE, PUBLIC_BASE_URL and BOOTSTRAP_ADMIN_EMAILS.
 python main.py serve
 ```
 
 On Windows, activate with `.venv\Scripts\Activate.ps1`, or use Docker for the same Linux runtime as deployment.
 
-Cloudflare Access is the only web authentication method. For interactive local development, route a dedicated Access protected development hostname to the loopback server through your development tunnel. Unit tests and synthetic CLI simulation run without an identity provider or live integrations. There are no shared passwords or Basic Auth fallback.
+`APP_ENV=development` is an open sandbox with a fixed demo administrator. It seeds four synthetic audits; fixture delivery records are simulated, never sent. Every startup creates a fresh temporary database, ignoring `DATABASE_PATH`, Bridge/SendGrid credentials, Access settings, real administrator addresses, session keys, test cutoffs, and email/scheduler enable flags. Real Bridge clients and email delivery are also blocked at their final boundaries. Form protection remains enabled. No Basic Auth exists.
 
-The orange **TEST MODE** banner appears whenever `APP_ENV` is `development` or `test`. Production email requires `APP_ENV=production` and complete configuration. Test mode passes only `ADMIN_EMAIL` to SendGrid as a recipient; intended broker, office, and agent addresses appear in the subject/body for diagnosis and in the audit record.
+`APP_ENV=test` uses real Bridge listings and Cloudflare Access, and redirects enabled email exclusively to `ADMIN_EMAIL`. `APP_ENV=production` requires Cloudflare Access and sends enabled mail to actual recipients. Both modes use persistent storage and require issuer, audience, public HTTPS origin and bootstrap application administrator configuration.
+
+PR previews use `auditdesk-pr{{pr_id}}.oncornerstone.app`, development mode and no persistent volume. Set preview-only `PUBLIC_BASE_URL=auto` so the app derives the HTTPS browser origin from Coolify's generated `COOLIFY_URL`. Local development uses `PUBLIC_BASE_URL=http://127.0.0.1:8765`. Preview edits reset on restart.
 
 For a time-limited live-data test, set `APP_ENV=test` and `TEST_MODE_END_AT` to an ISO 8601 timestamp with an offset, such as `2026-09-28T00:00:00-04:00`. Once that time passes, scheduled runs record `test_window_closed` without querying Bridge, and both scheduled and manual email sends are blocked. Scheduling can be disabled independently with `SCHEDULER_ENABLED=false`.
 
@@ -65,15 +66,15 @@ Open **Simulation** in the staff sidebar, or run `python3 main.py simulate`. Thi
 
 Copy `.env.example` to `.env` and configure the desired authentication and integration settings. Keep email and scheduling disabled until the staging workflow is verified. `.env` is ignored by Git. Environment variables override `.env` values.
 
-Local development stores SQLite in `./data/audit.sqlite3`; containers use `/app/data/audit.sqlite3` on a persistent volume.
+Development always uses temporary synthetic storage. Test/production use `DATABASE_PATH` (default `./data/audit.sqlite3`), with `/app/data/audit.sqlite3` on a persistent volume in Coolify.
 
 Run `python3 main.py inspect-bridge` to validate field mappings against the live `itso` OData metadata. `bridge_fields.json` documents the exact fields used. If Bridge changes the dataset, update the mapping and rerun inspection before restarting the job.
 
-Run the job manually with `python3 main.py run`. It queries a rolling 24-hour window, with both Active status and entry time restricted server-side. Runs use a file lock and unique listing/audit constraints. A second run over the same listings creates no new audits or emails.
+In test/production, run the job manually with `python3 main.py run`. It queries a rolling 24-hour window, with both Active status and entry time restricted server-side. Runs use a file lock and unique listing/audit constraints. A second run over the same listings creates no new audits or emails.
 
 ## Daily schedule
 
-Set `SCHEDULER_ENABLED=true` to let the single application process check every five minutes for the daily 8:00 a.m. run in `APP_TIMEZONE` (default America/Toronto). It retries failed intake, deduplicates completed days, and resumes from the last successful intake boundary after downtime. Keep it false for UI-only staging. There are no operating-system-specific background services to install.
+In test/production, set `SCHEDULER_ENABLED=true` to let the single application process check every five minutes for the daily 8:00 a.m. run in `APP_TIMEZONE` (default America/Toronto). It retries failed intake, deduplicates completed days, and resumes from the last successful intake boundary after downtime. Keep it false for UI-only staging. There are no operating-system-specific background services to install.
 
 The first run uses `LISTING_WINDOW_HOURS`; subsequent successful intake boundaries allow recovery across longer outages. Listings that became inactive during an outage remain excluded by the product's Active-only rule. This is not a complete historical MLS replication service.
 

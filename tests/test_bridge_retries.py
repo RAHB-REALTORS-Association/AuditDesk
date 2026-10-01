@@ -10,7 +10,7 @@ from audit_app.bridge import BridgeClient, BridgeError, retry_after_seconds
 
 class BridgeRetryTests(unittest.TestCase):
     def client(self):
-        return BridgeClient(SimpleNamespace(bridge_base_url='https://bridge.example.test/dataset',
+        return BridgeClient(SimpleNamespace(env='test', bridge_base_url='https://bridge.example.test/dataset',
                                            bridge_key='test-key', bridge_auth_mode='bearer'))
 
     def error(self, code, retry_after=None):

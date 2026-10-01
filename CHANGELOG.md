@@ -10,4 +10,6 @@
 - Failed-intake retry and downtime catch-up; test-to-production email protection and disabled-send switch.
 - Online backup, validated offline restore, responsive navigation, and operator/user documentation.
 
-- Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access is the only web authentication method. Email delivery now defaults to disabled in configuration as well as containers.
+- Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access authenticates test/production; development is an open synthetic sandbox. Email delivery now defaults to disabled in configuration as well as containers.
+
+- Disposable development/PR previews: seeded synthetic audits, fixed demo identity, ignored integration credentials, hard Bridge/email guards, no scheduler or volume, and retained form protection.

@@ -4,7 +4,7 @@
 
 - Preserve the MLS paperwork audit workflow: Bridge intake, fair selection and cooldowns, SendGrid requests, reviewer assignments, results, and reports.
 - Use the Cornerstone App Blueprint skill as the implementation guide, applying relevant sections without adding unrelated features.
-- Deployment target is Coolify. Cloudflare Access supplies authentication; the application validates its signed assertion and owns server-enforced authorization.
+- Deployment target is Coolify. In test/production, Cloudflare Access supplies authentication; the application validates its signed assertion and owns server-enforced authorization.
 - Reviewer assignment and authenticated actor identity are separate concepts. Roles: Reviewer handles shared audits/results/retries/reports; Audit manager adds assignment/roster/templates/selection; IT administrator adds access management/activity export.
 
 ## Repository
@@ -22,7 +22,7 @@
 - User prefers Chrome debug for Coolify interaction. The authenticated Chrome RAHB profile was accessible through browser tooling during initial inspection.
 - Staging was deployed on 2026-09-30 (2026-10-01 UTC) from commit `07f153b677ef19052cfb1a308fad72a7eebaa656` on `feat/coolify-access-foundation`. Dockerfile build pack, port 8765, no public port mapping, and the default image command replace the original Nixpacks skeleton.
 - HTTPS hostname: `auditdesk.oncornerstone.app`; bootstrap administrator: `justin.hayes@cornerstone.inc`. Cloudflare Access uses the existing Staff policy; signed identity validation and roles live in the app. Real browser sign-in reached the administrator UI. Do not store secret values in source or documentation.
-- Volume `vw844cowkss0k8ccs8gww8ws-audit-data` mounts at `/app/data`; database and session key were created with UID/GID 10001. Automatic and preview deployments are disabled; consistent container names prevent overlapping SQLite owners.
+- Volume `vw844cowkss0k8ccs8gww8ws-audit-data` mounts at `/app/data`; database and session key were created with UID/GID 10001. Automatic deployments are disabled; PR previews are enabled with separate development variables. Consistent container names prevent overlapping SQLite owners.
 - On 2026-09-30 the user authorized live-listing test emails exclusively to `justin.hayes@cornerstone.inc`, and daily scheduling around 08:00 America/Toronto. APP_ENV remains test; EMAIL_ENABLED and SCHEDULER_ENABLED are true. The first live intake failed on Bridge HTTP 429 before committing any listings or sending email; retry handling now honors Retry-After with bounded retries and a full-minute fallback. Runtime commit `33fac09bde01c502e23df68714413e94fb57a842` completed intake of 295 listings, selected 18, and SendGrid accepted 16 administrator-only messages. Two audits had recipient validation failures. Test mail is one message per selected listing, not a digest.
 - Coolify v4.0.0-beta.397 overrides the image's health probe with curl/wget. The image includes curl; omitting it caused an unhealthy container and Traefik 404. The corrected proxy readiness request returns HTTP 200.
 - User confirms the wildcard certificate is at Cloudflare's edge and their routing uses a tunnel. Leave shared certificate/zone/tunnel settings alone unless a specific routing fault is verified.
@@ -48,9 +48,15 @@
 
 - Work branch: `feat/coolify-access-foundation`; Flask/Gunicorn container uses port 8765 and `/app/data` (UID 10001).
 - Fresh installation: no database import from Eric's local draft is required. Schema version 1 is initialized transactionally.
-- No launchd services or macOS-specific data paths. Local SQLite defaults to `./data/audit.sqlite3`; file locks are portable.
+- No launchd services or macOS-specific data paths. Test/production SQLite defaults to `./data/audit.sqlite3`; development uses fresh temporary synthetic storage. File locks are portable.
 - Runtime starts exactly one worker/instance. Use stop/start deployment rather than overlapping instances on this SQLite volume.
 - New installations start with EMAIL_ENABLED=false and SCHEDULER_ENABLED=false. Live integration testing requires explicit user authorization; the current staging test authorization is recorded above.
 - Cloudflare mode persists an automatically generated session signing key in `/app/data/session.key` unless APP_SECRET_KEY is explicitly provided.
 - Use `.venv/bin/python -m pip install -r requirements.lock` for reproducible dependencies.
 - See `docs/DEPLOYMENT.md`, `docs/USER_GUIDE.md`, and `CHANGELOG.md` for operations and scope.
+
+## Development and PR previews
+
+- Development is open with a fixed demo admin, synthetic fixtures and a fresh temporary database per app startup. Never permit live Bridge access or email/scheduling in that mode, even with credentials/flags supplied. Backup/restore is disabled.
+- Preview hostname template: `auditdesk-pr{{pr_id}}.oncornerstone.app`. Preview-only `APP_ENV=development` and `PUBLIC_BASE_URL=auto`; auto derives the HTTPS browser origin from Coolify `COOLIFY_URL`. Preview keys are blank, and no persistent volume is needed.
+- Keep the main staging app in Cloudflare-authenticated live-data test mode with its existing administrator-only mail and daily schedule.

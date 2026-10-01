@@ -284,6 +284,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         banner = '<div class="prod-banner">PRODUCTION EMAIL ENABLED</div>'
     if not config.email_enabled:
         banner = '<div class="test-banner"><strong>EMAIL DISABLED</strong><span>No messages will be sent. Audits and results remain available for review.</span></div>'
+    if config.env == "development":
+        banner = '<div class="test-banner"><strong>DEVELOPMENT SANDBOX</strong><span>Synthetic listings only. Email records are simulated; no messages can be sent. Changes reset on restart.</span></div>'
     cards = "".join(f'<div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{counts[key]}</div></div>' for key, label in (("processed", "Listings considered"), ("selected", "Selected audits"), ("sent", "Emails accepted"), ("failed", "Needs attention")))
     if tab == "users":
         title, subtitle = "Access management", "Application roles for individually authenticated people."
@@ -393,5 +395,6 @@ def serve(config):
     from .application import create_app
     from .runtime import start_runtime
     app = create_app(config)
+    config = app.extensions["auditdesk_config"]
     app.extensions["auditdesk_runtime"] = start_runtime(config)
     app.run(host=config.host, port=config.port, debug=False)

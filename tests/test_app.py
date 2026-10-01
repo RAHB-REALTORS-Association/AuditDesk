@@ -42,7 +42,7 @@ class AuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = replace(load_config(), database_path=str(Path(self.temp.name) / "audit.sqlite3"),
+        self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name) / "audit.sqlite3"),
                               email_enabled=True, admin_email="admin@example.com", sendgrid_key="fake-key", from_address="audit@example.com", rate=1)
 
     def test_twice_does_not_repeat_audit_or_email(self):

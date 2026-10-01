@@ -57,6 +57,8 @@ def message_parts(listing, config, intended_to, intended_cc):
 
 
 def send_email(config, listing, audit_id, intended_to, intended_cc, actual):
+    if config.env == "development":
+        raise EmailError("Email delivery is unavailable in development")
     with connect(config.database_path) as db:
         audit = db.execute("SELECT test_mode FROM audits WHERE id=?", (audit_id,)).fetchone()
     if audit and audit["test_mode"] and not config.test_mode:
@@ -68,6 +70,8 @@ def send_email(config, listing, audit_id, intended_to, intended_cc, actual):
 
 
 def send_failure_email(config, listing, audit_id, issues):
+    if config.env == "development":
+        raise EmailError("Email delivery is unavailable in development")
     with connect(config.database_path) as db:
         audit = db.execute("SELECT test_mode FROM audits WHERE id=?", (audit_id,)).fetchone()
     if audit and audit["test_mode"] and not config.test_mode:
@@ -83,6 +87,8 @@ def send_failure_email(config, listing, audit_id, issues):
 
 
 def _post_message(config, audit_id, intended_to, intended_cc, actual, subject, body, rich_body, kind):
+    if config.env == "development":
+        raise EmailError("Email delivery is unavailable in development")
     if not config.email_enabled:
         raise EmailError("Email delivery is disabled")
     if not config.test_window_open():

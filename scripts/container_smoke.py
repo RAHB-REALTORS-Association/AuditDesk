@@ -38,6 +38,22 @@ try:
     ready()
     assert docker('exec',name,'python','-c',"import sqlite3; db=sqlite3.connect('/app/data/audit.sqlite3'); print(db.execute('SELECT display_name FROM app_users').fetchone()[0]); db.close()")=='Survives restart'
     print('PASS: non-root startup, health, authentication denial, and persistent data after restart')
+    docker('rm','-f',name)
+    docker('run','-d','--name',name,
+           '-e','APP_ENV=development','-e','PUBLIC_BASE_URL=auto',
+           '-e','COOLIFY_URL=http://auditdesk-pr1.oncornerstone.app',
+           '-e','DATABASE_PATH=/app/data/audit.sqlite3',
+           '-e','EMAIL_ENABLED=true','-e','SCHEDULER_ENABLED=true',
+           '-e','BRIDGE_API_KEY=ignored-sentinel','-e','SENDGRID_API_KEY=ignored-sentinel',image)
+    ready()
+    preview=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
+    assert 'DEVELOPMENT SANDBOX' in preview and 'DEMO-1' in preview
+    db_script="import glob,sqlite3; db=sqlite3.connect(glob.glob('/tmp/auditdesk-preview-*/sandbox.sqlite3')[0]); "
+    docker('exec',name,'python','-c',db_script+"db.execute(\"UPDATE audit_reviewers SET name='Disposable change'\"); db.commit()")
+    docker('restart',name)
+    ready()
+    assert docker('exec',name,'python','-c',db_script+"print(db.execute('SELECT name FROM audit_reviewers').fetchone()[0])")=='Demo Reviewer'
+    print('PASS: open development preview, synthetic fixtures, no volume required, and database reset on restart')
 finally:
     subprocess.run(['docker','rm','-f',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     subprocess.run(['docker','volume','rm',volume],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)

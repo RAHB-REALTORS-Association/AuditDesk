@@ -31,7 +31,7 @@ class FoundationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.config = replace(load_config(), database_path=str(Path(self.temp.name)/'audit.sqlite3'),
+        self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name)/'audit.sqlite3'),
                               auth_mode='cloudflare', access_issuer='https://example.cloudflareaccess.com',
                               access_audience='test-audience', public_url='https://audit.example.com',
                               secret_key='test-secret-'*5, bootstrap_admins=('admin@example.com',),

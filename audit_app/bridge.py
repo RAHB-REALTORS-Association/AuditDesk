@@ -43,6 +43,8 @@ def office_address(office, fields):
 
 class BridgeClient:
     def __init__(self, config):
+        if config.env == "development":
+            raise BridgeError("Live Bridge access is unavailable in development")
         self.config = config
         self.base = config.bridge_base_url.rstrip("/")
         if not self.base.startswith("https://"):
@@ -54,6 +56,8 @@ class BridgeClient:
         self.offices = {}
 
     def _get(self, url):
+        if self.config.env == "development":
+            raise BridgeError("Live Bridge access is unavailable in development")
         if not url.startswith(self.base + "/"):
             raise BridgeError("Bridge pagination URL left the configured dataset")
         headers = {"Accept": "application/json"}

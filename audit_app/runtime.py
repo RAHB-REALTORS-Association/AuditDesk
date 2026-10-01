@@ -30,6 +30,6 @@ def start_runtime(config):
             except Exception as error:
                 logging.getLogger("audit_app").error("scheduled_run_failed type=%s", type(error).__name__)
             stop.wait(300)
-    if config.scheduler_enabled:
+    if config.env != "development" and config.scheduler_enabled:
         threading.Thread(target=scheduler, daemon=True, name="auditdesk-scheduler").start()
     return handle, stop

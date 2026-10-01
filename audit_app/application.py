@@ -8,6 +8,7 @@ import logging
 import secrets
 import threading
 import time
+import tempfile
 from collections import defaultdict, deque
 from datetime import timedelta
 from urllib.parse import urlparse
@@ -17,7 +18,7 @@ from werkzeug.exceptions import HTTPException
 
 from . import web
 from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
-from .config import load_config, validate_web_config
+from .config import development_config, load_config, validate_web_config
 from .database import connect, init_db
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
@@ -27,10 +28,17 @@ from .templates import save_templates, save_failure_templates, validate_template
 
 
 def create_app(config=None, verifier=None):
-    config = config or load_config()
+    config = development_config(config or load_config())
     validate_web_config(config)
+    sandbox = None
+    if config.env == "development":
+        sandbox = tempfile.TemporaryDirectory(prefix="auditdesk-preview-")
+        config = replace(config, database_path=str(Path(sandbox.name) / "sandbox.sqlite3"))
     init_db(config.database_path)
     seed_admins(config)
+    if sandbox:
+        from .development import seed_development
+        seed_development(config)
     if not config.secret_key:
         secret_path = Path(config.database_path).resolve().parent / "session.key"
         try:
@@ -48,10 +56,12 @@ def create_app(config=None, verifier=None):
     app.config.update(SECRET_KEY=config.secret_key,
                       MAX_CONTENT_LENGTH=32768, MAX_FORM_MEMORY_SIZE=32768, MAX_FORM_PARTS=20,
                       SESSION_COOKIE_NAME="auditdesk_session", SESSION_COOKIE_HTTPONLY=True,
-                      SESSION_COOKIE_SECURE=True, SESSION_COOKIE_SAMESITE="Strict",
+                      SESSION_COOKIE_SECURE=urlparse(config.public_url).scheme == "https", SESSION_COOKIE_SAMESITE="Strict",
                       PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
                       TRUSTED_HOSTS=[urlparse(config.public_url).hostname, "127.0.0.1", "localhost"])
-    verifier = verifier or AccessVerifier(config)
+    app.extensions["auditdesk_config"] = config
+    app.extensions["auditdesk_sandbox"] = sandbox  # Keep disposable storage alive for this app.
+    verifier = None if sandbox else (verifier or AccessVerifier(config))
     limits = defaultdict(deque)
     limit_lock = threading.Lock()
 
@@ -95,7 +105,8 @@ def create_app(config=None, verifier=None):
                                  "X-Request-ID": getattr(g, "request_id", "")})
         # Inline code is legacy template editor code; no external script sources are allowed.
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+        if urlparse(config.public_url).scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
 
     @app.errorhandler(HTTPException)

@@ -80,6 +80,9 @@ class AccessVerifier:
 
 
 def authenticate(config, verifier):
+    if config.env == "development":
+        principal = Principal("development-sandbox", "developer@example.invalid", "Demo Developer", "admin")
+        return establish_session(principal)
     try:
         claims = verifier.verify(request.headers.get("Cf-Access-Jwt-Assertion", ""))
     except (jwt.PyJWTError, ValueError, TypeError):
@@ -100,6 +103,10 @@ def authenticate(config, verifier):
             event(db, "identity.bound", user["id"])
         db.commit()
     principal = Principal(subject, email, user["display_name"] or email.split("@")[0].replace(".", " ").title(), user["role"])
+    return establish_session(principal)
+
+
+def establish_session(principal):
     g.principal = principal
     if session.get("subject") != principal.subject:
         session.clear()

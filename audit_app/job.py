@@ -75,7 +75,7 @@ def _listing_dict(row):
 
 
 def deliver_audit(config, audit_id, retry=False, sender=None):
-    if not config.email_enabled or not config.test_window_open():
+    if config.env == "development" or not config.email_enabled or not config.test_window_open():
         LOG.info("test_window_closed", extra={"audit_id": audit_id})
         return False
     with connect(config.database_path) as db:
@@ -133,6 +133,9 @@ def deliver_audit(config, audit_id, retry=False, sender=None):
 
 
 def run_job(config, client=None, rng=random, now=None, sender=None, only_if_needed=False):
+    if config.env == "development":
+        from .simulation import simulate_cycle
+        return simulate_cycle(config)
     init_db(config.database_path)
     with job_lock(config.database_path):
         now = now or datetime.now(timezone.utc)

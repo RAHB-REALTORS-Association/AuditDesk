@@ -43,7 +43,7 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
 
 
 def deliver_failure_notice(config, audit_id, retry=False, sender=None):
-    if not config.email_enabled or not config.test_window_open():
+    if config.env == "development" or not config.email_enabled or not config.test_window_open():
         LOG.info("failure_notice_blocked_by_test_window", extra={"audit_id": audit_id})
         return False
     expected = "email_failed" if retry else "email_pending"

@@ -1,6 +1,6 @@
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -49,15 +49,34 @@ class Config:
         return now < self.test_end_at
 
 
+def development_config(config):
+    """Ignore live integrations and identity configuration in the open sandbox."""
+    if config.env != "development":
+        return config
+    return replace(config, database_path="", bridge_base_url="", bridge_key="", sendgrid_key="",
+                   from_address="sandbox@example.invalid", admin_email="developer@example.invalid",
+                   bootstrap_admins=("developer@example.invalid",), auth_mode="open",
+                   access_issuer="", access_audience="", secret_key="",
+                   scheduler_enabled=False, email_enabled=False, test_end_at=None)
+
+
 def load_config():
     env = os.getenv("APP_ENV", "development").lower()
     if env not in {"development", "test", "production"}:
         raise ValueError("APP_ENV must be development, test, or production")
+    public_url = os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8765").rstrip("/")
+    if env == "development" and public_url == "auto":
+        # Coolify supplies each PR's generated URL. TLS terminates at Cloudflare;
+        # its HTTP origin route must not become the browser's CSRF origin.
+        preview = urlparse(os.getenv("COOLIFY_URL", "").split(",")[0].strip())
+        if not preview.hostname or preview.username or preview.path not in {"", "/"}:
+            raise ValueError("Development PUBLIC_BASE_URL=auto requires a valid COOLIFY_URL")
+        public_url = "https://" + preview.netloc
     map_path = Path(os.getenv("BRIDGE_FIELD_MAP", "bridge_fields.json"))
     mapping = json.loads(map_path.read_text())
     zone = os.getenv("APP_TIMEZONE", "America/Toronto")
     ZoneInfo(zone)
-    end_value = os.getenv("TEST_MODE_END_AT", "").strip()
+    end_value = os.getenv("TEST_MODE_END_AT", "").strip() if env != "development" else ""
     test_end_at = datetime.fromisoformat(end_value.replace("Z", "+00:00")) if end_value else None
     if test_end_at is not None and test_end_at.utcoffset() is None:
         raise ValueError("TEST_MODE_END_AT must include a timezone offset")
@@ -86,7 +105,7 @@ def load_config():
         access_issuer=os.getenv("CF_ACCESS_ISSUER", "").rstrip("/"),
         access_audience=os.getenv("CF_ACCESS_AUDIENCE", ""),
         secret_key=os.getenv("APP_SECRET_KEY", ""),
-        public_url=os.getenv("PUBLIC_BASE_URL", "http://127.0.0.1:8765").rstrip("/"),
+        public_url=public_url,
         bootstrap_admins=tuple(x.strip().lower() for x in os.getenv("BOOTSTRAP_ADMIN_EMAILS", "").split(",") if x.strip()),
         scheduler_enabled=os.getenv("SCHEDULER_ENABLED", "false").lower() in {"1", "true", "yes"},
         email_enabled=os.getenv("EMAIL_ENABLED", "false").lower() in {"1", "true", "yes"},
@@ -101,15 +120,21 @@ def load_config():
         raise ValueError("Production requires AUTH_MODE=cloudflare")
     if config.env == "production" and config.email_enabled and not all((config.bridge_key, config.sendgrid_key, config.from_address)):
         raise ValueError("Production configuration is incomplete")
-    return config
+    return development_config(config)
 
 
 def validate_web_config(config):
-    if config.auth_mode != "cloudflare":
+    if config.env not in {"development", "test", "production"}:
+        raise ValueError("Unknown application environment")
+    if config.env != "development" and config.auth_mode != "cloudflare":
         raise ValueError("Only AUTH_MODE=cloudflare is supported")
     public = urlparse(config.public_url)
     if public.path or public.query or public.fragment or public.username or not public.hostname:
         raise ValueError("PUBLIC_BASE_URL must be an origin without a path")
+    if config.env == "development":
+        if public.scheme not in {"http", "https"}:
+            raise ValueError("Development PUBLIC_BASE_URL must use HTTP or HTTPS")
+        return
     issuer = urlparse(config.access_issuer)
     if (issuer.scheme != "https" or not issuer.hostname or not issuer.hostname.endswith(".cloudflareaccess.com")
             or issuer.path or issuer.query or issuer.fragment or issuer.username or issuer.port):
