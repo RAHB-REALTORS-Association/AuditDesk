@@ -1,9 +1,16 @@
 # Changelog
 
+## Unreleased — account assignments and bulk operations
+
+- Remove the Audit team page, roster routes, and roster-only controls; active account roles determine assignment eligibility.
+- Schema version 2 replaces development roster fields and data with account assignment references.
+- Add row selection, select-all, selection counts, and atomic bulk assignment/clearing in Audit history.
+- Reject unavailable accounts, missing audits, duplicate selections, and stale batches without partial updates; log each affected audit.
+
 ## Unreleased — interface polish
 
 - Give history columns room to read, limit sticky actions to audit history, and unify report/simulation card spacing.
-- Normalize editor, roster, outcome, and access-form padding; align checkbox controls and stack forms on narrow screens.
+- Normalize editor, outcome, and access-form padding; align checkbox controls and stack forms on narrow screens.
 - Align the application shell with Cornerstone Signatures: shared color tokens, system typography, compact navigation, and a separate identity bar.
 
 ## Unreleased — repository organization

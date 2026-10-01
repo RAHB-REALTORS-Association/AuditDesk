@@ -14,7 +14,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/web.py` | Page composition, navigation, tab capability map, history queries, and form revisions |
 | `audit_app/views/common.py` | Escaping, local time, status badges, sort headings, recipients, and CSRF form tokens |
 | `audit_app/views/workflow.py` | Outcome forms and isolated simulation presentation |
-| `audit_app/views/management.py` | Selection settings, reviewer roster, access management, and activity views |
+| `audit_app/views/management.py` | Selection settings, access management, and activity views |
 | `audit_app/views/emails.py` | Email template editor and rendered previews |
 | `audit_app/views/reports.py` | Daily and brokerage HTML reports |
 | `audit_app/static/` | Shared styles, navigation/sorting/branch scripts, email editor script, and branding |
@@ -32,7 +32,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `job.py` | Active intake window, fair selection/cooldowns, duplicate prevention, request delivery and retries |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
 | `outcomes.py` | Single-assignment results and failure-notice delivery |
-| `assignment.py`, `settings.py` | Reviewer responsibility and managed selection percentage |
+| `assignment.py`, `settings.py` | Individual/bulk account assignments and managed selection percentage |
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
 | `backup.py` | Consistent online backup and validated offline restore |
@@ -45,11 +45,11 @@ Keep domain changes in their existing modules; avoid adding another service or m
 
 Bridge supplies listing, agent, office, and broker facts. Intake stores the information used for the audit locally; this is an audit history, not continuous replication of the MLS. Office backfill retrieves current addresses for older records without reselecting audits.
 
-Application-owned state includes selections, delivery attempts, reviewer assignments, results/issues, templates, settings, application users, and activity history. Reviewer names express responsibility; authenticated identity records who performed a mutation.
+Application-owned state includes selections, delivery attempts, reviewer assignments, results/issues, templates, settings, application users, and activity history. Assignments reference application user IDs; eligibility follows the active account and its role capabilities. Authenticated identity records who performed a mutation. Bulk assignment validates the entire batch and writes assignments and activity events in one transaction.
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 1 initializes transactionally. Initialization supports the baseline schema and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 2 initializes transactionally. It replaces the development-only reviewer roster and its assignments with an `assignee_user_id` foreign key to application accounts. Initialization supports baseline/version-1 databases, drops the obsolete roster fields/table, and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 
@@ -72,4 +72,4 @@ Mutations check capability, origin, CSRF token, bounded form input, and the rend
 
 ## Validation and deployment
 
-Regression tests cover workflows and denied HTTP paths with synthetic data and mocked providers. Container smoke tests exercise the actual Gunicorn image, persistent restart, and disposable previews. See [Contributing](../CONTRIBUTING.md) for commands and [Deployment](DEPLOYMENT.md) for operations. This reorganization changes no database schema or deployment entry point.
+Regression tests cover workflows and denied HTTP paths with synthetic data and mocked providers. Container smoke tests exercise the actual Gunicorn image, persistent restart, and disposable previews. See [Contributing](../CONTRIBUTING.md) for commands and [Deployment](DEPLOYMENT.md) for operations. The deployment entry point is unchanged.

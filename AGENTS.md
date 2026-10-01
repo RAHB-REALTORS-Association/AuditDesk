@@ -25,7 +25,7 @@
 ## Boundaries to preserve
 
 - Cloudflare Access authenticates test/production; the app validates the signed assertion and enforces roles/capabilities. Never trust unsigned identity or role headers.
-- Reviewer responsibility and authenticated actor identity are separate. Reviewer, Audit manager, and IT administrator roles have distinct server-enforced permissions.
+- Assignments reference active application accounts with auditing permission; do not reintroduce a separate reviewer roster. Assignment responsibility and the authenticated actor making a change are separate. Reviewer, Audit manager, and IT administrator roles have distinct server-enforced permissions.
 - Development is open with a fixed demo administrator, synthetic fixtures, and fresh temporary storage per startup. Credentials and enable flags must never activate Bridge, email, scheduling, or live storage. Backup/restore and live maintenance commands stay unavailable.
 - Keep duplicate prevention, unknown-delivery handling, test-recipient substitution, test-to-production protections, and stale-form checks.
 - Never commit secrets, `.env`, session keys, real listings/contacts, database exports, backups, or generated reports.

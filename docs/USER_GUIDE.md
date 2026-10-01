@@ -2,15 +2,15 @@
 
 See the [documentation index](README.md) for operator, configuration, and developer guides.
 
-Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If identity succeeds but AuditDesk denies access, IT must grant your email an active application role. Assignment to the reviewer roster alone does not grant login access.
+Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If identity succeeds but AuditDesk denies access, IT must grant your email an active application role.
 
 | Role | Capabilities |
 | --- | --- |
 | Reviewer | View shared audits/listings/runs, record pass/fail results, retry failed emails, read reports and export brokerage PDFs |
-| Audit manager | Reviewer capabilities plus assignments, roster, selection percentage and email templates |
+| Audit manager | Reviewer capabilities plus individual/bulk assignments, selection percentage and email templates |
 | IT administrator | Manager capabilities plus access management and activity-log export |
 
-No one receives a role automatically merely by signing in. IT can change or disable access under **Access management**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Names in the audit roster describe responsibility for work; the activity log separately records the authenticated person making each change.
+No one receives a role automatically merely by signing in. IT can change or disable access under **Access management**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Active accounts with permission to record audit results are available for assignment. Reviewer, Audit manager, and IT administrator roles currently have this permission. The activity log records the authenticated person making each change.
 
 ## Development previews
 
@@ -19,7 +19,7 @@ A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX bann
 ## Everyday audit work
 
 1. Review Audit history. Selected listings, intended/actual recipients, delivery state, reviewer, and outcome are shown together.
-2. A manager assigns a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. Removed roster entries preserve historical names and flag unfinished work for reassignment.
+2. A manager assigns a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
 3. Once the original request is accepted by SendGrid, choose Record result. A pass records the result without another email. For a failure, describe the issues, preview the notice, then record and send. Each audit receives one result.
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
 5. Use daily and brokerage reports for the app's intake history. Missing intake is not a zero day, and rates exclude pending results where appropriate. PDF export reflects the selected period.
@@ -63,7 +63,11 @@ Edit the follow-up wording under **Admin → Failed-audit email**. Its subject a
 
 ## Track who is working on an audit
 
-Open **Admin → Audit team** to add names, correct a name, remove a name from future assignments, or delete its roster entry. **Remove from list** can be undone. **Delete** removes the name from the roster and frees it for reuse; an unfinished audit assigned to that person shows **Needs reassignment** and retains the former name for context. Completed audits keep their result and former assignee name. In **Audit history**, choose a name in the **Assigned to** dropdown and save. The **Work status** column shows **Not started** when no one is assigned, **In progress** when someone is assigned, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email. The roster controls work assignment. The authenticated user who makes a change is recorded separately in the activity log.
+IT manages accounts and roles under **Admin → Access management**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. In **Audit history**, choose an account in the **Assigned to** dropdown and save.
+
+For bulk assignment, select audit rows with their checkboxes, or use the heading checkbox to select all displayed audits (up to the latest 200). The toolbar shows the selection count. Choose an account under **Assign selected to**, then select **Apply to selected**. Choose **Unassigned — clear assignment** to remove assignments from the selected rows. **Clear selection** unchecks rows without changing their assignments. Selection survives table sorting, but resets after saving or refreshing.
+
+The **Work status** column shows **Not started** when no one is assigned, **In progress** when an eligible account is assigned, **Needs reassignment** when that account is unavailable, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email or change results. Bulk changes save together: an invalid account, missing audit, or stale form rejects the whole batch. Each changed audit records the authenticated actor in the activity log.
 
 
 ## Change the audit selection percentage

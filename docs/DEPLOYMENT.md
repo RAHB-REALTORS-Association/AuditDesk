@@ -94,7 +94,7 @@ python main.py restore --input /app/data/backups/auditdesk-YYYYMMDD.sqlite3 --co
 
 Restore refuses a running service, checks integrity, foreign keys and supported schema, prepares a temporary database, preserves administrator access, saves a pre-restore backup, and replaces the database atomically. Files above 512 MiB are rejected. Resume the service and verify login and record counts. Restore rolls back all data to the backup time, so newer changes can be lost.
 
-Schema version 1 initializes a fresh database transactionally. Existing baseline schema is accepted by the tested initialization code, but no original installation data migration is required for this project. Newer unknown schema versions are rejected.
+Schema version 2 initializes a fresh database transactionally and accepts baseline/version-1 databases. The development-only audit roster and its assignments are discarded; account assignments use application user IDs. Existing audit results remain intact. No original installation data migration is required for this project. Newer unknown schema versions are rejected. Version-1 application images cannot open version-2 databases.
 
 ## Releases and rollback
 

@@ -33,10 +33,10 @@ The daily job draws a selection target from new listings, applies cooldowns, and
 | Role | Responsibilities |
 | --- | --- |
 | Reviewer | Review audits, record results, retry failed mail, and read/export reports |
-| Audit manager | Reviewer work plus assignments, reviewer roster, selection settings, and email templates |
+| Audit manager | Reviewer work plus individual/bulk assignments, selection settings, and email templates |
 | IT administrator | Manager work plus application access and activity export |
 
-The reviewer roster assigns responsibility for audits. Login access is managed separately. See the [staff guide](docs/USER_GUIDE.md) for everyday workflows.
+Active accounts whose role permits auditing appear in assignment dropdowns. IT manages those accounts under **Access management**; managers assign audits individually or in bulk from **Audit history**. See the [staff guide](docs/USER_GUIDE.md) for everyday workflows.
 
 ## Requirements
 
