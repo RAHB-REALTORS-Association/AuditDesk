@@ -81,3 +81,5 @@
 - Consolidate selection percentage, office and individual broker cooldowns, and intake window into one consistently styled form with an atomic Save action.
 
 - Add a manual Asana follow-up handoff for recorded failed audits: prefilled task draft, complete copyable details, and optional saved task link. No API credentials or synchronization. Schema 5 adds the optional task URL while preserving existing data.
+
+- Make Asana task creation a visible action on failed audit rows, with a separate link for saving task URLs/copying details. Recording a failure opens its follow-up page immediately.

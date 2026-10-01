@@ -12,9 +12,9 @@ def asana_handoff(config, data):
     title, notes, draft = follow_up(config, data)
     saved = data['asana_task_url'] or ''
     action = (f'<a class="primary-button" href="{esc(saved)}" target="_blank" rel="noopener noreferrer">Open Asana task</a>' if saved else
-              f'<a class="primary-button" href="{esc(draft)}" target="_blank" rel="noopener noreferrer">Start Asana follow-up</a>')
-    return f'''<section class="asana-handoff" aria-labelledby="asana-heading"><h3 id="asana-heading">Asana follow-up</h3>
-        <p>Review the draft in Asana, choose its project and assignee, then create the task. AuditDesk does not track its status.</p>
+              f'<a class="primary-button" href="{esc(draft)}" target="_blank" rel="noopener noreferrer">Create Asana task ↗</a>')
+    return f'''<section class="asana-handoff" aria-labelledby="asana-heading"><h3 id="asana-heading">Follow up in Asana</h3>
+        <p>Open a prefilled task draft, choose its project and assignee in Asana, then create the task. Paste its link below to keep it with this audit.</p>
         {action}
         {'<p class="form-help">A task is already linked. Open it before creating another.</p>' if saved else ''}
         <details><summary>Review or copy follow-up details</summary>
@@ -40,11 +40,10 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
         details = ('<p class="form-error" role="alert">' + esc(error) + '</p>' if error else '')
         details += f'<p>Result: {badge(data["outcome"])}</p><p>Recorded {esc(local_time(data["outcome_at"], config.timezone))}</p>'
         if data["outcome"] == "failed":
+            details += asana_handoff(config, data)
             details += f'<h3>Issues recorded</h3><pre class="outcome-issues">{html.escape(data["issues"] or "")}</pre><p>Follow-up notice: {badge(data["failure_email_status"] or "email_pending")}</p>'
             if data["failure_last_error"]:
                 details += f'<p class="error">{esc(data["failure_last_error"])}</p>'
-        if data["outcome"] == "failed":
-            details += asana_handoff(config, data)
         return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}<a href="/?tab=audits">Back to audit history</a></div></section>'
     if data["email_status"] != "email_sent":
         return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">Send the original audit request before recording its result.</div></section>'

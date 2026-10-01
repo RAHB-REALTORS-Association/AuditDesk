@@ -301,6 +301,8 @@ def create_app(config=None, verifier=None):
             record_outcome(config, audit_id, result, issues)
         except ValueError as error:
             return web.render(config, "outcome", form_values=issues, error=str(error), audit_id=audit_id), 400
+        if result == 'failed':
+            return done('outcome', 'Failed audit recorded. Create an Asana task below to start follow-up; review the notice status for email delivery.', id=audit_id)
         return done("audits", "Audit result recorded. Check notice status below.")
 
     @app.post("/retry/<int:audit_id>")

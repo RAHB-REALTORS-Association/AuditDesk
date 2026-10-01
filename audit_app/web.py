@@ -5,6 +5,7 @@ Feature-specific HTML belongs in views/. Request handling belongs in application
 from flask import g, has_request_context, request
 import re
 
+from .asana import follow_up
 from .assignment import can_audit, eligible_assignees
 from .database import connect
 from .lists import query_page
@@ -141,7 +142,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
             outcome = f'<a href="/?tab=outcome&id={r["id"]}">Record result</a>' if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
             if r["outcome"] == "failed" and allowed("audits.result"):
-                outcome += f'<small><a href="/?tab=outcome&id={r["id"]}">View follow-up</a></small>'
+                task_url = r['asana_task_url'] or follow_up(config, r)[2]
+                task_label = 'Open Asana task' if r['asana_task_url'] else 'Create Asana task'
+                retry += f'<div class="audit-asana-actions"><a class="asana-task-action" href="{esc(task_url)}" target="_blank" rel="noopener noreferrer" title="{esc("Open the linked task" if r["asana_task_url"] else "Open a prefilled draft; review and create the task in Asana")}">{task_label} ↗</a><a class="asana-details-action" href="/?tab=outcome&id={r["id"]}#asana-heading">{("Task link & details" if r["asana_task_url"] else "Link task / copy details")}</a></div>'
             if outcome.startswith("<a "):
                 retry = outcome + retry
                 outcome = "—"

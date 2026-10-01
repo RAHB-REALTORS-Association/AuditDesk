@@ -318,10 +318,12 @@ class FoundationTests(unittest.TestCase):
         from urllib.parse import parse_qs, urlsplit
         self.seed_asana_audits()
         page=self.get('/?tab=outcome&id=1',role='reviewer').text
-        self.assertIn('Start Asana follow-up',page)
+        self.assertIn('Create Asana task',page)
         self.assertIn('Copy follow-up details',page)
         self.assertRegex(page, r'id="asana-task-url"[^>]*value=""')
-        self.assertIn('View follow-up',self.get().text)
+        self.assertIn('Create Asana task',self.get().text)
+        self.assertIn('Link task / copy details',self.get().text)
+        self.assertIn('https://app.asana.com/0/-/create_task?',self.get().text)
         draft=unescape(re.search(r'href="(https://app.asana.com/0/-/create_task[^"]+)"',page)[1])
         query=parse_qs(urlsplit(draft).query)
         self.assertIn('MLS 1',query['name'][0])
@@ -329,10 +331,19 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('https://audit.example.com/?tab=outcome&id=1',query['notes'][0])
         self.assertNotIn('<check>',page)
         for number in (2,3):
-            self.assertNotIn('Start Asana follow-up',self.get(f'/?tab=outcome&id={number}').text)
+            self.assertNotIn('Create Asana task',self.get(f'/?tab=outcome&id={number}').text)
         # Opening/rendering the handoff never records a created Asana task.
         with connect(self.config.database_path) as db:
             self.assertIsNone(db.execute('SELECT asana_task_url FROM audits WHERE id=1').fetchone()[0])
+
+    def test_recording_failure_opens_asana_follow_up(self):
+        self.seed_asana_audits()
+        with patch('audit_app.outcomes.deliver_failure_notice',return_value=False):
+            response=self.post('/outcome/3',{'outcome':'failed','action':'send','issues':'Missing form'},page='/?tab=outcome&id=3')
+        self.assertEqual(response.status_code,303)
+        self.assertIn('tab=outcome',response.headers['Location'])
+        self.assertIn('id=3',response.headers['Location'])
+        self.assertIn('Create Asana task',self.get(response.headers['Location']).text)
 
     def test_asana_task_link_validation_csrf_revision_and_failed_only(self):
         self.seed_asana_audits()
@@ -346,7 +357,9 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.post(path,{'asana_task_url':url},role='reviewer',page='/?tab=outcome&id=1').status_code,303)
         page=self.get('/?tab=outcome&id=1').text
         self.assertIn('Open Asana task',page)
-        self.assertNotIn('Start Asana follow-up',page)
+        self.assertNotIn('Create Asana task',page)
+        self.assertIn('Open Asana task',self.get().text)
+        self.assertNotIn('Create Asana task',self.get().text)
         self.assertEqual(self.client.post(path,base_url=self.config.public_url,data={'asana_task_url':url,'token':'bad','revision':'0'}).status_code,401)
         self.assertEqual(self.post(path,{'asana_task_url':url,'revision':'0'}).status_code,409)
         self.assertEqual(self.post(path,{'asana_task_url':''}).status_code,303)

@@ -112,10 +112,10 @@ Selection settings use one form and **Save selection settings** button. Office c
 
 ## Failed-audit Asana follow-up
 
-From a recorded failed audit in Audit history, choose **View follow-up**. **Start Asana follow-up** opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
+Failed audits show a **Create Asana task** action directly in Audit history. It opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
 
 Use **Review or copy follow-up details → Copy follow-up details** if prefilling fails or the issues are long. Long drafts contain an abbreviated description and link to the full audit; the copy field always includes all recorded issues. If clipboard access is blocked, select and copy the text manually.
 
-Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
+Choose **Link task / copy details** in Audit history to open the follow-up page. Recording a failed result also takes you directly there. Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
 
 The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.
