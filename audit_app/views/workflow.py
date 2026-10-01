@@ -1,14 +1,36 @@
 """Audit result forms and failed-notice previews."""
 import html
 
+from ..asana import follow_up
+from ..board_scope import require_cornerstone_audit
 from ..database import connect
 from ..emailer import EmailError, resolve_recipients
 from ..templates import current_failure_templates, format_message_parts
 from .common import badge, esc, local_time, retry_token
 
 
+def asana_handoff(config, data):
+    title, notes, draft = follow_up(config, data)
+    saved = data['asana_task_url'] or ''
+    action = (f'<a class="primary-button" href="{esc(saved)}" target="_blank" rel="noopener noreferrer">Open Asana task</a>' if saved else
+              f'<a class="primary-button" href="{esc(draft)}" target="_blank" rel="noopener noreferrer">Create Asana task ↗</a>')
+    return f'''<section class="asana-handoff" aria-labelledby="asana-heading"><h3 id="asana-heading">Follow up in Asana</h3>
+        <p>Open a prefilled task draft, choose its project and assignee in Asana, then create the task. Paste its link below to keep it with this audit.</p>
+        {action}
+        {'<p class="form-help">A task is already linked. Open it before creating another.</p>' if saved else ''}
+        <details><summary>Review or copy follow-up details</summary>
+        <label for="asana-details">Task title and description<textarea id="asana-details" rows="8" readonly>{esc(title + chr(10) + chr(10) + notes)}</textarea></label>
+        <button type="button" data-copy-asana>Copy follow-up details</button><p class="form-help" data-copy-status role="status"></p>
+        <p class="form-help">If the prefilled draft is incomplete, paste these full details into Asana.</p></details>
+        <form method="post" action="/outcome/{data['id']}/asana" class="asana-link-form">
+        <input type="hidden" name="token" value="{retry_token(config, 'asana')}">
+        <label for="asana-task-url">Asana task link (optional)<input id="asana-task-url" type="url" name="asana_task_url" maxlength="2048" placeholder="https://app.asana.com/…" value="{html.escape(saved, quote=True)}"></label>
+        <button type="submit">Save task link</button><p class="form-help">Paste the link after creating the task. Clear it and save to remove the link.</p></form></section>'''
+
+
 def outcome_view(config, audit_id, issues="", error="", preview=False):
     with connect(config.database_path) as db:
+        require_cornerstone_audit(db, audit_id)
         row = db.execute("""SELECT a.*,l.mls_number,l.address,l.agent_name AS listing_agent_name,
             l.agent_email,l.brokerage_email,l.broker_email,l.broker_first_name FROM audits a
             JOIN listings l ON l.id=a.listing_id WHERE a.id=?""", (audit_id,)).fetchone()
@@ -17,8 +39,10 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
     data = dict(row)
     heading = f'<div class="panel-head"><div><h2>MLS {esc(data["mls_number"])} · {esc(data["address"])}</h2><p>{esc(data["brokerage_name"])} · {esc(data["broker_name"])}</p></div></div>'
     if data["outcome"]:
-        details = f'<p>Result: {badge(data["outcome"])}</p><p>Recorded {esc(local_time(data["outcome_at"], config.timezone))}</p>'
+        details = ('<p class="form-error" role="alert">' + esc(error) + '</p>' if error else '')
+        details += f'<p>Result: {badge(data["outcome"])}</p><p>Recorded {esc(local_time(data["outcome_at"], config.timezone))}</p>'
         if data["outcome"] == "failed":
+            details += asana_handoff(config, data)
             details += f'<h3>Issues recorded</h3><pre class="outcome-issues">{html.escape(data["issues"] or "")}</pre><p>Follow-up notice: {badge(data["failure_email_status"] or "email_pending")}</p>'
             if data["failure_last_error"]:
                 details += f'<p class="error">{esc(data["failure_last_error"])}</p>'

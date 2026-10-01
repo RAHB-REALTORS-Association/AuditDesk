@@ -38,7 +38,7 @@ class AssignmentMigrationTests(unittest.TestCase):
         init_db(self.path)
         init_db(self.path)
         with connect(self.path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 6)
             rows = db.execute('SELECT assignee_user_id,outcome FROM audits ORDER BY id').fetchall()
             self.assertEqual([tuple(row) for row in rows], [(None, None), (None, 'passed')])
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
@@ -46,14 +46,14 @@ class AssignmentMigrationTests(unittest.TestCase):
                 db.execute('UPDATE audits SET assignee_user_id=999 WHERE id=1')
             self.assertIsNone(db.execute('PRAGMA foreign_key_check').fetchone())
 
-    def test_version1_restore_upgrades_and_version4_backup_restores(self):
+    def test_version1_restore_upgrades_and_current_backup_restores(self):
         self.assertEqual(validate(self.path), 1)
         config = replace(load_config(), env='test', database_path=str(Path(self.temp.name) / 'live.sqlite3'),
                          bootstrap_admins=('admin@example.invalid',))
         restore(config, self.path, 'RESTORE STOPPED AUDITDESK')
-        self.assertEqual(validate(config.database_path), 4)
+        self.assertEqual(validate(config.database_path), 6)
         snapshot = backup(config, str(Path(self.temp.name) / 'current.sqlite3'))
-        self.assertEqual(validate(snapshot), 4)
+        self.assertEqual(validate(snapshot), 6)
         restore(config, snapshot, 'RESTORE STOPPED AUDITDESK')
         with connect(config.database_path) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 2)

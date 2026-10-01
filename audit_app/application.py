@@ -16,13 +16,16 @@ from urllib.parse import urlparse
 from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
+from .board_scope import require_cornerstone_audit
 from . import web
+from .views.errors import error_page
 from .assignment import assign_audits, assign_reviewer
 from .backup import MAX_BACKUP_BYTES, backup, stage_restore
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
+from .asana import save_task_link
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, seed_admins
 from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings, save_selection_settings
@@ -126,16 +129,20 @@ def create_app(config=None, verifier=None):
 
     @app.errorhandler(HTTPException)
     def http_error(error):
-        return f'<h1>{error.code} — {web.esc(error.name)}</h1><p>{web.esc(error.description)}</p><p><a href="/">Return to AuditDesk</a></p>', error.code
+        title = {401: 'Sign-in required', 403: 'Access denied', 404: 'Page not found',
+                 409: 'Refresh before saving', 413: 'File or form too large', 429: 'Too many requests'}.get(error.code, error.name)
+        return error_page(error.code, title, str(error.description), getattr(g, 'request_id', '')), error.code
 
     @app.errorhandler(ValueError)
     def invalid(error):
-        return f'<h1>Change not saved</h1><p>{web.esc(str(error))}</p><p>Use Back to keep your form, or <a href="/">return to AuditDesk</a>.</p>', 400
+        return error_page(400, 'Change not saved', str(error), getattr(g, 'request_id', ''),
+                          'Use your browser’s Back button to keep your form and correct it.'), 400
 
     @app.errorhandler(Exception)
     def unexpected(error):
         logging.getLogger("audit_app").error("request_failed request_id=%s type=%s", getattr(g, "request_id", ""), type(error).__name__)
-        return '<h1>Something went wrong</h1><p>Your request could not be completed. Contact IT with request ID ' + web.esc(getattr(g, "request_id", "")) + '.</p>', 500
+        return error_page(500, 'Something went wrong', 'Your request could not be completed. Contact IT with the request ID below.',
+                          getattr(g, 'request_id', '')), 500
 
     @app.get("/healthz")
     def health():
@@ -274,11 +281,21 @@ def create_app(config=None, verifier=None):
             return web.render(config, tab, form_values=(subject, body, fmt), error=str(error)), 400
         return web.render(config, tab, form_values=(subject, body, fmt))
 
+    @app.post('/outcome/<int:audit_id>/asana')
+    @require('audits.result')
+    def asana_link(audit_id):
+        try:
+            save_task_link(config, audit_id, request.form.get('asana_task_url', ''))
+        except ValueError as error:
+            return web.render(config, 'outcome', error=str(error), audit_id=audit_id), 400
+        return done('outcome', 'Asana task link saved.', id=audit_id)
+
     @app.post("/outcome/<int:audit_id>")
     @require("audits.result")
     def outcome(audit_id):
         result, action, issues = (request.form.get(k, "") for k in ("outcome", "action", "issues"))
         with connect(config.database_path) as db:
+            require_cornerstone_audit(db, audit_id)
             if not db.execute("SELECT 1 FROM audits WHERE id=?", (audit_id,)).fetchone():
                 abort(404)
         try:
@@ -291,6 +308,8 @@ def create_app(config=None, verifier=None):
             record_outcome(config, audit_id, result, issues)
         except ValueError as error:
             return web.render(config, "outcome", form_values=issues, error=str(error), audit_id=audit_id), 400
+        if result == 'failed':
+            return done('outcome', 'Failed audit recorded. Create an Asana task below to start follow-up; review the notice status for email delivery.', id=audit_id)
         return done("audits", "Audit result recorded. Check notice status below.")
 
     @app.post("/retry/<int:audit_id>")

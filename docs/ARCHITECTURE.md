@@ -52,7 +52,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 4 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 6 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3/version-4/version-5 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. Version 5 adds an optional Asana task URL to audits and preserves existing records and settings. Version 6 adds nullable listing board provenance; missing historical values stay unverified until read back from Bridge. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 
@@ -76,3 +76,7 @@ Mutations check capability, origin, CSRF token, bounded form input, and the rend
 ## Validation and deployment
 
 Regression tests cover workflows and denied HTTP paths with synthetic data and mocked providers. Container smoke tests exercise the actual Gunicorn image, persistent restart, and disposable previews. See [Contributing](../CONTRIBUTING.md) for commands and [Deployment](DEPLOYMENT.md) for operations. The deployment entry point is unchanged.
+
+`asana.py` constructs a bounded, URL-encoded manual draft for recorded failed audits and validates saved HTTPS task links against the exact `app.asana.com` host and task paths. It makes no outbound requests. The outcome view provides complete copyable details and records saved/removed links through the existing role, CSRF, origin, revision, and activity controls. No Asana status synchronization is performed.
+
+`board_scope.py` enforces Cornerstone membership for audit mutations and provides the no-mail board backfill. Bridge queries require `OriginatingSystemName eq 'Cornerstone'`, and both the returned rows and local selection reject foreign/missing provenance. Scoped list queries, counts, daily/brokerage reports, and PDF exports use the persisted board. Request and failure-notice delivery also recheck that provenance, so old pending requests cannot bypass the boundary.

@@ -109,3 +109,19 @@ To prepare a restore, upload an AuditDesk SQLite backup (up to 512 MiB) and choo
 Take a current backup, stop AuditDesk in Coolify, and run the displayed command in a one-off container using the same persistent volume and runtime identity configuration. Restore preserves a pre-restore snapshot and replaces the database atomically. Restart and verify login and record counts. Newer changes are lost when restoring an older backup; check email history before resuming mail. Use a backup supported by the chosen image when rolling back. Recovery is unavailable in disposable development previews.
 
 Selection settings use one form and **Save selection settings** button. Office cooldown applies to the brokerage office; individual broker cooldown follows the broker across offices. All four values are validated and saved together, and apply to future runs.
+
+## Failed-audit Asana follow-up
+
+Failed audits show a **Create Asana task** action directly in Audit history. It opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
+
+Use **Review or copy follow-up details → Copy follow-up details** if prefilling fails or the issues are long. Long drafts contain an abbreviated description and link to the full audit; the copy field always includes all recorded issues. If clipboard access is blocked, select and copy the text manually.
+
+Choose **Link task / copy details** in Audit history to open the follow-up page. Recording a failed result also takes you directly there. Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
+
+The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.
+
+## Cornerstone board boundary
+
+AuditDesk only imports and displays listings whose Bridge `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership.
+
+Older databases did not store this field. Those records are retained but hidden from listing/audit views and reports until IT verifies their board using `backfill-listing-boards`. An unverified or other-board listing cannot be assigned, have a result recorded, send/retry audit mail, or start an Asana follow-up. A notice identifies how many records await verification. Existing recorded history is not deleted.

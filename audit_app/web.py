@@ -5,6 +5,7 @@ Feature-specific HTML belongs in views/. Request handling belongs in application
 from flask import g, has_request_context, request
 import re
 
+from .asana import follow_up
 from .assignment import can_audit, eligible_assignees
 from .database import connect
 from .lists import query_page
@@ -30,28 +31,29 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     with connect(config.database_path) as db:
         if not db.in_transaction:
             db.execute("BEGIN")
+        unverified = db.execute('SELECT count(*) FROM listings WHERE originating_system_name IS NULL').fetchone()[0]
         revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
         counts = {
-            "processed": db.execute("SELECT count(*) FROM listings").fetchone()[0],
-            "selected": db.execute("SELECT count(*) FROM audits").fetchone()[0],
-            "sent": db.execute("SELECT count(*) FROM audits WHERE email_status='email_sent'").fetchone()[0],
-            "failed": db.execute("SELECT count(*) FROM audits WHERE email_status IN ('email_failed','email_unknown')").fetchone()[0],
+            "processed": db.execute("SELECT count(*) FROM listings WHERE originating_system_name='Cornerstone'").fetchone()[0],
+            "selected": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone'").fetchone()[0],
+            "sent": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND email_status='email_sent'").fetchone()[0],
+            "failed": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
         audits, listings, runs = [], [], []
         reviewers = eligible_assignees(db)
         if tab == "audits":
             audits, list_page = query_page(db, tab, """SELECT a.*, l.mls_number, l.address, l.agent_email,
                 COALESCE(NULLIF(ar.display_name,''),ar.email) AS reviewer_name, ar.active AS active, ar.role AS role,
-                (SELECT count(*) FROM audits prior WHERE prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
+                (SELECT count(*) FROM audits prior JOIN listings pl ON pl.id=prior.listing_id WHERE pl.originating_system_name='Cornerstone' AND prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
                 CASE WHEN a.outcome IS NOT NULL THEN 'completed' WHEN ar.active=1 THEN 'in_progress'
                   WHEN a.assignee_user_id IS NOT NULL THEN 'needs_reassignment' ELSE 'not_started' END AS work_status
-                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id""",
+                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id WHERE l.originating_system_name='Cornerstone'""",
                 ('mls_number','address','brokerage_name','broker_name','agent_name','agent_email','reviewer_name'),
                 'email_status', {'MLS / Property':'mls_number','Selected':'selected_at','Brokerage / Broker':'brokerage_name',
                 'Agent':'agent_name','Intended recipients':'intended_to','Actual recipient':'actual_recipients',
                 'Mode / Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count'}, 'selected_at')
         elif tab == "listings":
-            listings, list_page = query_page(db, tab, 'SELECT * FROM listings',
+            listings, list_page = query_page(db, tab, "SELECT * FROM listings WHERE originating_system_name='Cornerstone'",
                 ('mls_number','address','brokerage_name','agent_name'), 'processing_status',
                 {'MLS / Property':'mls_number','Entered':'entry_timestamp','Brokerage':'brokerage_name',
                  'Listing agent':'agent_name','Processing status':'processing_status'}, 'first_processed_at')
@@ -101,7 +103,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Failed-audit email", "Edit the notice sent when an audit is marked failed."
         content = template_editor(config, form_values, error, "failure")
     elif tab == "outcome":
-        title, subtitle = "Record audit result", "Mark this audit passed, or describe issues and review its failure notice."
+        title, subtitle = "Audit result and follow-up", "Record the result, review issues, and manage failed-audit follow-up."
         content = outcome_view(config, audit_id, form_values or "", error, preview_outcome)
     elif tab in {"admin", "manage"}:
         title, subtitle = "Manage", "Selection settings, email wording, and application access."
@@ -116,7 +118,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Entered", "date"), sort_heading("Brokerage"),
                             sort_heading("Listing agent"), sort_heading("Processing status")))
         rows = "".join(f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["entry_timestamp"])}">{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
-        title, subtitle = "Listings considered", "Every new active listing evaluated by the daily selection job."
+        title, subtitle = "Listings considered", "Cornerstone listings only · New active listings evaluated by the daily job."
     elif tab == "runs":
         headings = "".join(sort_heading(label, "number" if label in {"Fetched", "New", "Selected"} else "text") for label in ("Started", "Status", "Fetched", "New", "Selected", "Error"))
         rows = ""
@@ -140,6 +142,10 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         for r in audits:
             retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
             outcome = f'<a href="/?tab=outcome&id={r["id"]}">Record result</a>' if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
+            if r["outcome"] == "failed" and allowed("audits.result"):
+                task_url = r['asana_task_url'] or follow_up(config, r)[2]
+                task_label = 'Open Asana task' if r['asana_task_url'] else 'Create Asana task'
+                retry += f'<div class="audit-asana-actions"><a class="asana-task-action" href="{esc(task_url)}" target="_blank" rel="noopener noreferrer" title="{esc("Open the linked task" if r["asana_task_url"] else "Open a prefilled draft; review and create the task in Asana")}">{task_label} ↗</a><a class="asana-details-action" href="/?tab=outcome&id={r["id"]}#asana-heading">{("Task link & details" if r["asana_task_url"] else "Link task / copy details")}</a></div>'
             if outcome.startswith("<a "):
                 retry = outcome + retry
                 outcome = "—"
@@ -162,7 +168,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             reviewer_label = r["reviewer_name"] or ""
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
             rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
-        title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
+        title, subtitle = "Audit history", "Cornerstone listings only · Selection, recipient routing, and email delivery."
     if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery"}:
         if not rows:
             rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
@@ -187,4 +193,4 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                      if 'method="post"' in match[0].split('>', 1)[0] else match[0], content, flags=re.DOTALL)
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
 <body><a class="skip-link" href="#main">Skip to content</a><button class="menu-backdrop" type="button" aria-label="Close menu" hidden></button><aside class="sidebar" id="sidebar"><button class="menu-close" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">MANAGEMENT</div><nav>{admin_nav}</nav></aside>
-<div class="workspace"><header class="topbar"><button class="menu-toggle" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><span class="topbar-title">Audit operations</span><div class="identity">{esc(g.principal.name) if has_request_context() else "Audit Desk"}<small>{esc({"admin": "IT administrator", "manager": "Audit manager", "reviewer": "Reviewer"}.get(g.principal.role, g.principal.role)) if has_request_context() else ""}</small></div></header><main id="main"><header class="page-head"><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main></div><script src="/static/shell.js" defer></script><script src="/static/bulk-assignment.js" defer></script><script src="/static/columns.js" defer></script><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script></body></html>'''
+<div class="workspace"><header class="topbar"><button class="menu-toggle" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><span class="topbar-title">Audit operations</span><div class="identity">{esc(g.principal.name) if has_request_context() else "Audit Desk"}<small>{esc({"admin": "IT administrator", "manager": "Audit manager", "reviewer": "Reviewer"}.get(g.principal.role, g.principal.role)) if has_request_context() else ""}</small></div></header><main id="main"><header class="page-head"><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div></header>{banner}{f'<div class="notice">Records awaiting board verification: {unverified:,}. Unverified listings are excluded from audits and reports. Contact IT to verify their board.</div>' if unverified else ''}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main></div><script src="/static/shell.js" defer></script><script src="/static/bulk-assignment.js" defer></script><script src="/static/columns.js" defer></script><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script><script src="/static/asana.js" defer></script></body></html>'''

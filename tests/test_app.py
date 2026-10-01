@@ -20,7 +20,7 @@ NOW = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
 
 def listing(number, office="office-1", broker="broker-1"):
     return {
-        "listing_id": str(number), "bridge_listing_id": str(number), "mls_number": str(number),
+        "originating_system_name": "Cornerstone", "listing_id": str(number), "bridge_listing_id": str(number), "mls_number": str(number),
         "status": "Active", "entry_timestamp": (NOW - timedelta(hours=1)).isoformat(),
         "address": f"{number} Main Street", "agent_id": "agent", "agent_name": "Agent Name",
         "agent_email": "agent@example.com", "brokerage_id": office,

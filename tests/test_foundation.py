@@ -70,6 +70,27 @@ class FoundationTests(unittest.TestCase):
         return client.post(path, data=data, base_url=self.config.public_url,
                            headers={'Cf-Access-Jwt-Assertion':self.token(role), 'Origin':self.config.public_url, **headers})
 
+    def test_errors_are_styled_without_authenticated_assets_and_escape_content(self):
+        from audit_app.views.errors import error_page
+        for response, status in ((self.client.get('/'),401),
+                                 (self.get('/?tab=users',role='reviewer'),403),
+                                 (self.get('/not-a-page'),404),
+                                 (self.post('/manage/selection',{}),400)):
+            self.assertEqual(response.status_code,status)
+            self.assertIn('<!doctype html>',response.text)
+            self.assertIn('<style>',response.text)
+            self.assertIn('error-card',response.text)
+            self.assertIn('Return to AuditDesk',response.text)
+            self.assertNotIn('src="/static/',response.text)
+            self.assertEqual(response.headers['Cache-Control'],'no-store')
+            self.assertIn(response.headers['X-Request-ID'],response.text)
+        self.assertIn('&lt;script&gt;',error_page(400,'Bad','<script>'))
+        with patch('audit_app.application.web.render',side_effect=RuntimeError('private internals')):
+            response=self.get()
+        self.assertEqual(response.status_code,500)
+        self.assertIn('error-card',response.text)
+        self.assertNotIn('private internals',response.text)
+
     def test_authentication_fails_closed_and_health_is_public(self):
         self.assertEqual(self.client.get('/healthz').status_code,200)
         for path in ('/', '/static/app.css', '/reports/brokerages.pdf'):
@@ -86,9 +107,9 @@ class FoundationTests(unittest.TestCase):
         stamp = datetime.now(timezone.utc).isoformat()
         with connect(self.config.database_path) as db:
             for number in range(50):
-                db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
+                db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
                     address,brokerage_id,brokerage_name,brokerage_address,first_processed_at,processing_status)
-                    VALUES(?,?,'Active',?,'Example',?,'Example Realty',?,?,'processed_not_selected')""",
+                    VALUES('Cornerstone',?,?,'Active',?,'Example',?,'Example Realty',?,?,'processed_not_selected')""",
                     (str(number),str(number),stamp,f"office-{number}",f"{number} Example Street, Hamilton ON",stamp))
             db.commit()
         for period in ('3m', '6m', '1y'):
@@ -117,9 +138,9 @@ class FoundationTests(unittest.TestCase):
     def test_bulk_assignment_validates_batch_and_records_each_actor(self):
         with connect(self.config.database_path) as db:
             for number in (1, 2, 3):
-                db.execute("""INSERT INTO listings(id,bridge_listing_id,mls_number,status,entry_timestamp,
+                db.execute("""INSERT INTO listings(originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
                     address,first_processed_at,processing_status)
-                    VALUES(?,?,?,'Active','2026','Example','2026','selected_for_audit')""", (number,str(number),str(number)))
+                    VALUES('Cornerstone',?,?,?,'Active','2026','Example','2026','selected_for_audit')""", (number,str(number),str(number)))
                 db.execute("""INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,
                     actual_recipients,test_mode,email_status,selection_metadata)
                     VALUES(?,?,'2026','[]','[]','[]',1,'email_sent','{}')""", (number,number))
@@ -269,8 +290,8 @@ class FoundationTests(unittest.TestCase):
     def test_lists_page_filter_and_sort_the_full_history(self):
         with connect(self.config.database_path) as db:
             for number in range(205):
-                db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
-                    address,first_processed_at,processing_status) VALUES(?,?,'Active',?,'Example',?,?)""",
+                db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status) VALUES('Cornerstone',?,?,'Active',?,'Example',?,?)""",
                     (str(number),f'PAGE-{number:03}',NOW.isoformat(),NOW.isoformat(),
                      'email_failed' if number % 2 else 'processed_not_selected'))
             db.commit()
@@ -301,6 +322,97 @@ class FoundationTests(unittest.TestCase):
                 self.assertIn('class="list-filters"',response.text)
                 self.assertIn('Rows per page',response.text)
                 self.assertNotIn('Daily selection ·',response.text)
+
+    def seed_asana_audits(self):
+        with connect(self.config.database_path) as db:
+            for number, outcome in ((1,'failed'),(2,'passed'),(3,None)):
+                db.execute("""INSERT INTO listings(originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status)
+                    VALUES('Cornerstone',?,?,?,'Active','2026-10-01T12:00:00+00:00','Example & Main','2026-10-01T12:00:00+00:00','selected_for_audit')""", (number,str(number),str(number)))
+                db.execute("""INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,
+                    actual_recipients,test_mode,email_status,selection_metadata,outcome,issues)
+                    VALUES(?,?,'2026-10-01T12:00:00+00:00','[]','[]','[]',1,'email_sent','{}',?,?)""", (number,number,outcome,'Missing document <check> & details'))
+            db.commit()
+
+    def test_asana_handoff_only_for_failed_outcomes_and_safe_prefill(self):
+        from html import unescape
+        from urllib.parse import parse_qs, urlsplit
+        self.seed_asana_audits()
+        page=self.get('/?tab=outcome&id=1',role='reviewer').text
+        self.assertIn('Create Asana task',page)
+        self.assertIn('Copy follow-up details',page)
+        self.assertRegex(page, r'id="asana-task-url"[^>]*value=""')
+        self.assertIn('Create Asana task',self.get().text)
+        self.assertIn('Link task / copy details',self.get().text)
+        self.assertIn('https://app.asana.com/0/-/create_task?',self.get().text)
+        draft=unescape(re.search(r'href="(https://app.asana.com/0/-/create_task[^"]+)"',page)[1])
+        query=parse_qs(urlsplit(draft).query)
+        self.assertIn('MLS 1',query['name'][0])
+        self.assertIn('Missing document <check> & details',query['notes'][0])
+        self.assertIn('https://audit.example.com/?tab=outcome&id=1',query['notes'][0])
+        self.assertNotIn('<check>',page)
+        for number in (2,3):
+            self.assertNotIn('Create Asana task',self.get(f'/?tab=outcome&id={number}').text)
+        # Opening/rendering the handoff never records a created Asana task.
+        with connect(self.config.database_path) as db:
+            self.assertIsNone(db.execute('SELECT asana_task_url FROM audits WHERE id=1').fetchone()[0])
+
+    def test_foreign_and_unverified_audits_are_hidden_and_cannot_be_acted_on(self):
+        from audit_app.job import deliver_audit
+        from audit_app.outcomes import deliver_failure_notice
+        from audit_app.brokerage_report import brokerage_statistics
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET originating_system_name='BRREA',mls_number='FOREIGN-MARKER' WHERE id=2")
+            db.execute("UPDATE listings SET originating_system_name=NULL,mls_number='UNKNOWN-MARKER' WHERE id=3")
+            db.execute("UPDATE audits SET outcome='failed',issues='Missing form',email_status='email_pending',failure_email_status='email_pending' WHERE id IN (2,3)")
+            db.commit()
+        for tab in ('audits','listings'):
+            page=self.get('/?tab='+tab).text
+            self.assertNotIn('FOREIGN-MARKER',page)
+            self.assertNotIn('UNKNOWN-MARKER',page)
+            self.assertIn('Records awaiting board verification',page)
+        self.assertEqual(brokerage_statistics(self.config)['total'],1)
+        sender=Mock()
+        for number in (2,3):
+            self.assertEqual(self.get(f'/?tab=outcome&id={number}').status_code,400)
+            self.assertEqual(self.post(f'/outcome/{number}',{'outcome':'failed','action':'preview','issues':'Missing form'}).status_code,400)
+            self.assertEqual(self.post(f'/outcome/{number}/asana',{'asana_task_url':'https://app.asana.com/0/1/2'}).status_code,400)
+            self.assertEqual(self.post(f'/assignment/{number}',{'assignee_user_id':'2'}).status_code,400)
+            self.assertFalse(deliver_audit(self.config,number,sender=sender))
+            self.assertFalse(deliver_failure_notice(self.config,number,sender=sender))
+        sender.assert_not_called()
+
+    def test_recording_failure_opens_asana_follow_up(self):
+        self.seed_asana_audits()
+        with patch('audit_app.outcomes.deliver_failure_notice',return_value=False):
+            response=self.post('/outcome/3',{'outcome':'failed','action':'send','issues':'Missing form'},page='/?tab=outcome&id=3')
+        self.assertEqual(response.status_code,303)
+        self.assertIn('tab=outcome',response.headers['Location'])
+        self.assertIn('id=3',response.headers['Location'])
+        self.assertIn('Create Asana task',self.get(response.headers['Location']).text)
+
+    def test_asana_task_link_validation_csrf_revision_and_failed_only(self):
+        self.seed_asana_audits()
+        path='/outcome/1/asana'
+        url='https://app.asana.com/1/123/project/456/task/789'
+        self.assertEqual(self.post(path,{'asana_task_url':url,'token':'forged'}).status_code,403)
+        for bad in ('javascript:alert(1)','https://app.asana.com.evil.test/0/1/2','https://user@app.asana.com/0/1/2','https://app.asana.com/-/create_task','https://app.asana.com/0/1/2\nBAD','x'*2049):
+            self.assertEqual(self.post(path,{'asana_task_url':bad}).status_code,400)
+        self.assertEqual(self.post('/outcome/2/asana',{'asana_task_url':url}).status_code,400)
+        self.assertEqual(self.post('/outcome/999/asana',{'asana_task_url':url}).status_code,400)
+        self.assertEqual(self.post(path,{'asana_task_url':url},role='reviewer',page='/?tab=outcome&id=1').status_code,303)
+        page=self.get('/?tab=outcome&id=1').text
+        self.assertIn('Open Asana task',page)
+        self.assertNotIn('Create Asana task',page)
+        self.assertIn('Open Asana task',self.get().text)
+        self.assertNotIn('Create Asana task',self.get().text)
+        self.assertEqual(self.client.post(path,base_url=self.config.public_url,data={'asana_task_url':url,'token':'bad','revision':'0'}).status_code,401)
+        self.assertEqual(self.post(path,{'asana_task_url':url,'revision':'0'}).status_code,409)
+        self.assertEqual(self.post(path,{'asana_task_url':''}).status_code,303)
+        with connect(self.config.database_path) as db:
+            self.assertIsNone(db.execute('SELECT asana_task_url FROM audits WHERE id=1').fetchone()[0])
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='audit.asana_link_saved'").fetchone()[0],'reviewer')
 
     def test_combined_selection_save_is_atomic_and_role_checked(self):
         form = {'rate_percent':'8.5','cooldown_days':'21','broker_cooldown_days':'7','window_hours':'48'}
@@ -337,12 +449,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-4.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-6.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),4)
+        self.assertEqual(validate(snapshot),6)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -374,7 +486,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),4)
+        self.assertEqual(validate(file),6)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -399,7 +511,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],4)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)

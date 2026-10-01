@@ -9,7 +9,8 @@
     "agent_name": "ListAgentFullName",
     "agent_email": "ListAgentEmail",
     "office_id": "ListOfficeKey",
-    "office_name": "ListOfficeName"
+    "office_name": "ListOfficeName",
+    "originating_system_name": "OriginatingSystemName"
   },
   "Member": {
     "key": "MemberKey",

@@ -96,7 +96,7 @@ python main.py restore --input /app/data/backups/auditdesk-YYYYMMDD.sqlite3 --co
 
 Restore refuses a running service, checks integrity, foreign keys and supported schema, prepares a temporary database, preserves administrator access, saves a pre-restore backup, and replaces the database atomically. Files above 512 MiB are rejected. Resume the service and verify login and record counts. Restore rolls back all data to the backup time, so newer changes can be lost.
 
-Schema version 4 initializes a fresh database transactionally and accepts baseline/version-1/version-2/version-3 databases. Version 2 discarded the development-only audit roster and moved assignments to application user IDs; version 3 adds the managed brokerage cooldown while preserving the saved selection percentage and audit results. Version 4 adds managed broker cooldown and listing-window settings without changing saved rates, office cooldowns, assignments, or results. Until a manager saves a cooldown, the configured `BROKERAGE_COOLDOWN_DAYS` remains effective. Back up staging before upgrading. Newer unknown schema versions are rejected; older version-2/version-3 images cannot open version-4 databases, so rollback requires a compatible image or the pre-upgrade backup.
+Schema version 6 initializes a fresh database transactionally and accepts baseline/version-1/version-2/version-3/version-4/version-5 databases. Version 2 discarded the development-only audit roster and moved assignments to application user IDs; version 3 adds the managed brokerage cooldown while preserving the saved selection percentage and audit results. Version 4 adds managed broker cooldown and listing-window settings without changing saved rates, office cooldowns, assignments, or results. Version 5 adds an optional Asana task URL to audits without changing existing results or settings. Version 6 stores listing board provenance; historical records remain unverified until backfilled. Until a manager saves a cooldown, the configured `BROKERAGE_COOLDOWN_DAYS` remains effective. Back up staging before upgrading. Newer unknown schema versions are rejected; older version-2/version-3/version-4/version-5 images cannot open version-6 databases, so rollback requires a compatible image or the pre-upgrade backup.
 
 ## Releases and rollback
 
@@ -107,3 +107,15 @@ Before upgrading, take a verified backup and inspect schema compatibility. Stop/
 ## Deliberate scope
 
 This remains a focused audit application. No document upload, directory synchronization, publication scheduling, multi-tenancy, or distributed queues were added. Template Save deliberately changes future email wording; previews do not send. Recorded outcomes remain single-assignment. Template publication/version history remains outside this foundation. Restore uploads only validate and stage files; database replacement remains a stopped-service CLI operation. The email editor script is served from static assets; legacy inline event handlers still require CSP `unsafe-inline`; external scripts and frames are blocked. The shared record-revision check is conservative: another user's change can require a refresh even on a different record.
+
+## Verify boards when upgrading older staging data
+
+Take a backup, deploy schema 6 with the existing persistent volume, and run this command in the application container:
+
+```sh
+python main.py backfill-listing-boards
+```
+
+This reads `ListingKey` and `OriginatingSystemName` from Bridge for historical records lacking board provenance, in bounded batches. It records the reported board and activity events; it does not run intake, select audits, or send email. It can be resumed after an interrupted batch. Other-board records stay stored but excluded from audit actions and listing/audit/report views. Missing Bridge records remain unverified and blocked; never label them Cornerstone based on office names. Development rejects this live-data command.
+
+The standard field map must include `Property.originating_system_name: OriginatingSystemName`. Intake filters Bridge requests and checks each returned row locally before enriching or selecting it. Scheduling and retries cannot send audit requests for an unverified or other-board listing, including pre-upgrade pending requests. No manual cleanup or deletion is required.

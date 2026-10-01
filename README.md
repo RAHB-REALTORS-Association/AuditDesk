@@ -1,12 +1,12 @@
 # AuditDesk
 
-AuditDesk is Cornerstone's internal MLS paperwork audit application. It selects new Active listings from Bridge, requests paperwork through SendGrid, and gives staff one place to assign reviews, record results, and report on audit activity.
+AuditDesk is Cornerstone's internal MLS paperwork audit application. It selects new Active Cornerstone listings from Bridge, requests paperwork through SendGrid, and gives staff one place to assign reviews, record results, and report on audit activity.
 
 It runs as one Python service with SQLite and a persistent volume. Cloudflare Access authenticates staff; AuditDesk manages their roles and records their changes.
 
 ## What it does
 
-- Imports new Active listings and records every listing considered
+- Imports only Active listings with `OriginatingSystemName = Cornerstone`; other boards and missing board values cannot be audited
 - Selects audits using a configurable lottery, brokerage balancing, and broker/brokerage cooldowns
 - Sends audit requests and failed-audit notices, with delivery history and controlled retries
 - Assigns reviewers and tracks work from not started to completed

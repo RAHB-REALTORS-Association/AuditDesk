@@ -24,7 +24,7 @@ class OneListing:
 
     def active_new_listings(self, start, end):
         yield {
-            "listing_id": self.number, "mls_number": self.number, "status": "Active",
+            "originating_system_name": "Cornerstone", "listing_id": self.number, "mls_number": self.number, "status": "Active",
             "entry_timestamp": (NOW - timedelta(hours=1)).isoformat(), "address": "1 Example Street",
             "agent_name": "Example Agent", "agent_email": "agent@example.invalid",
             "brokerage_id": self.office_id, "brokerage_name": "Example Realty",
@@ -101,7 +101,7 @@ class SelectionSettingsTests(unittest.TestCase):
         init_db(self.config.database_path)
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 4)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 6)
         self.assertEqual(selection_percent(self.config), Decimal("12"))
         self.assertEqual(brokerage_cooldown_days(self.config), 14)
 

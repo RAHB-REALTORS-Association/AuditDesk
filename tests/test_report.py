@@ -22,8 +22,8 @@ class DailyReportTests(unittest.TestCase):
             for number, processed in (("A", "2026-09-28T03:30:00+00:00"),
                                       ("B", "2026-09-28T14:00:00+00:00"),
                                       ("C", "2026-06-01T14:00:00+00:00")):
-                listing_id = db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
-                    address,first_processed_at,processing_status) VALUES(?,?,'Active',?,'Example Address',?,'processed_not_selected')""",
+                listing_id = db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status) VALUES('Cornerstone',?,?,'Active',?,'Example Address',?,'processed_not_selected')""",
                     (number, number, processed, processed)).lastrowid
                 if number == "A":
                     db.execute("""INSERT INTO audits(listing_id,selected_at,intended_to,intended_cc,actual_recipients,

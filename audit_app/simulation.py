@@ -52,7 +52,7 @@ class DemoSender:
 
 def _listing(number, office, broker, entered, status="Active"):
     return {
-        "listing_id": number,
+        "originating_system_name": "Cornerstone", "listing_id": number,
         "mls_number": number,
         "status": status,
         "entry_timestamp": entered.isoformat(timespec="seconds"),
@@ -77,8 +77,8 @@ def simulate_cycle(config):
         init_db(demo_config.database_path)
         previous_at = (now - timedelta(days=1)).isoformat(timespec="seconds")
         with connect(demo_config.database_path) as db:
-            old = db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,address,brokerage_id,brokerage_name,broker_id,broker_name,first_processed_at,processing_status)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)""", ("previous-audit", "PREVIOUS", "Active", previous_at, "Previous Example Avenue",
+            old = db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,address,brokerage_id,brokerage_name,broker_id,broker_name,first_processed_at,processing_status)
+                VALUES('Cornerstone',?,?,?,?,?,?,?,?,?,?,?)""", ("previous-audit", "PREVIOUS", "Active", previous_at, "Previous Example Avenue",
                                                 "office-a", "Brokerage office-a", "broker-a", "Broker broker-a", previous_at, "email_sent")).lastrowid
             db.execute("""INSERT INTO audits(listing_id,selected_at,brokerage_id,brokerage_name,broker_id,broker_name,agent_name,intended_to,intended_cc,actual_recipients,test_mode,email_status,selection_metadata)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", (old, previous_at, "office-a", "Brokerage office-a", "broker-a", "Broker broker-a",

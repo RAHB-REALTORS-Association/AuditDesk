@@ -1,5 +1,6 @@
 """Assign audits to active application accounts with auditing permission."""
 
+from .board_scope import require_cornerstone_audit
 from .database import connect
 from .security import CAPABILITIES, event
 
@@ -28,6 +29,8 @@ def assign_audits(config, audit_ids, user_id):
         count = db.execute(f"SELECT count(*) FROM audits WHERE id IN ({placeholders})", audit_ids).fetchone()[0]
         if count != len(audit_ids):
             raise ValueError("Audit not found. No assignments were changed.")
+        for audit_id in audit_ids:
+            require_cornerstone_audit(db, audit_id)
         if user_id is not None:
             user = db.execute("SELECT * FROM app_users WHERE id=?", (user_id,)).fetchone()
             if not user or not can_audit(user):
