@@ -16,7 +16,6 @@ def seed_development(config):
     demo = replace(config, env="test", email_enabled=True, rate=1)
     run_job(demo, client=DemoBridge(rows), now=now, sender=lambda *args: "SIMULATED-NOT-SENT")
     with connect(config.database_path) as db:
-        stamp = now.isoformat(timespec="seconds")
-        db.execute("INSERT INTO audit_reviewers(name,created_at,updated_at) VALUES(?,?,?)",
-                   ("Demo Reviewer", stamp, stamp))
+        db.execute("INSERT INTO app_users(email,display_name,role) VALUES(?,?,?)",
+                   ("reviewer@example.invalid", "Demo Reviewer", "reviewer"))
         db.commit()

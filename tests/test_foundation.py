@@ -86,23 +86,29 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(r.status_code,200)
         self.assertNotIn('Access management',r.text)
         self.assertNotIn('Selection settings',r.text)
-        for page in ('users','activity','admin','template','reviewers'):
+        for page in ('users','activity','admin','template'):
             self.assertEqual(self.get('/?tab='+page,role='reviewer').status_code,403)
-        for path,form in (('/users',{}),('/admin/selection-rate',{'rate_percent':'100'}),('/reviewers',{'name':'X'}),('/assignment/1',{}),('/template',{})):
+        for path,form in (('/users',{}),('/admin/selection-rate',{'rate_percent':'100'}),('/assignment/1',{}),('/template',{})):
             self.assertEqual(self.post(path,form,role='reviewer').status_code,403)
         self.assertEqual(self.get('/?tab=users',role='manager').status_code,403)
         self.assertEqual(self.get('/?tab=template',role='manager').status_code,200)
         self.assertEqual(self.get('/activity.csv',role='manager').status_code,403)
 
+    def test_removed_roster_routes_are_not_available(self):
+        for role in ('reviewer', 'manager', 'admin'):
+            self.assertEqual(self.get('/?tab=reviewers', role=role).status_code, 404)
+            self.assertEqual(self.post('/reviewers', {'name': 'Unused'}, role=role).status_code, 404)
+            self.assertEqual(self.post('/reviewers/1', {'action': 'delete'}, role=role).status_code, 404)
+
     def test_csrf_origin_input_limits_and_role_changes(self):
-        self.assertEqual(self.post('/reviewers',{'name':'New'},Origin='https://evil.example').status_code,403)
-        self.assertEqual(self.post('/reviewers',{'name':'New','token':'forged'}).status_code,403)
-        self.assertEqual(self.post('/reviewers',{'name':'New','revision':'not-an-int'}).status_code,400)
-        self.assertEqual(self.post('/reviewers',{'name':'x'*40000}).status_code,413)
-        response=self.post('/reviewers',{'name':'Taylor'})
+        self.assertEqual(self.post('/admin/selection-rate',{'rate_percent':'7'},Origin='https://evil.example').status_code,403)
+        self.assertEqual(self.post('/admin/selection-rate',{'rate_percent':'7','token':'forged'}).status_code,403)
+        self.assertEqual(self.post('/admin/selection-rate',{'rate_percent':'7','revision':'not-an-int'}).status_code,400)
+        self.assertEqual(self.post('/admin/selection-rate',{'rate_percent':'x'*40000}).status_code,413)
+        response=self.post('/admin/selection-rate',{'rate_percent':'7'})
         self.assertEqual(response.status_code,303,response.text)
         with connect(self.config.database_path) as db:
-            row=db.execute("SELECT * FROM activity_events WHERE action='reviewer.created'").fetchone()
+            row=db.execute("SELECT * FROM activity_events WHERE action='selection.updated'").fetchone()
             self.assertEqual(row['actor'],'admin')
             db.execute("UPDATE app_users SET active=0 WHERE subject='reviewer'")
             db.commit()
@@ -135,9 +141,8 @@ class FoundationTests(unittest.TestCase):
         response=self.post('/template',{'subject':'Bad','body':'Custom unsaved wording','body_format':'plain','action':'preview'},page='/?tab=template')
         self.assertEqual(response.status_code,400,response.text)
         self.assertIn('Custom unsaved wording',response.text)
-        self.assertEqual(self.post('/reviewers',{'name':'Taylor'}).status_code,303)
         run_job(self.config, FakeClient([listing('1')]),now=NOW,sender=lambda *args:'fake')
-        self.assertEqual(self.post('/assignment/1',{'reviewer_id':'1'},role='manager').status_code,303)
+        self.assertEqual(self.post('/assignment/1',{'assignee_user_id':'2'},role='manager').status_code,303)
         response=self.post('/outcome/1',{'outcome':'passed','action':'record'},role='reviewer')
         self.assertEqual(response.status_code,303,response.text)
         with connect(self.config.database_path) as db:
@@ -172,7 +177,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),1)
+        self.assertEqual(validate(file),2)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -197,8 +202,8 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],1)
-            self.assertEqual(db.execute('SELECT name FROM audit_reviewers').fetchone()[0],'Existing')
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+            self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)
 

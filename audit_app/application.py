@@ -17,10 +17,10 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
 from . import web
-from .assignment import add_reviewer, assign_reviewer, delete_reviewer, rename_reviewer, set_reviewer_active
+from .assignment import assign_reviewer
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
-from .database import connect, init_db
+from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, authenticate, check_csrf, require, save_user, seed_admins
@@ -127,7 +127,7 @@ def create_app(config=None, verifier=None):
     def health():
         with connect(config.database_path) as db:
             db.execute("SELECT id FROM app_users LIMIT 1").fetchone()
-        return {"status": "ok", "schema": 1}
+        return {"status": "ok", "schema": SCHEMA_VERSION}
 
     @app.get("/")
     def index():
@@ -165,30 +165,10 @@ def create_app(config=None, verifier=None):
         save_user(config, request.form)
         return done("users", "Application access saved.")
 
-    @app.post("/reviewers")
-    @require("reviewers.manage")
-    def add_person():
-        add_reviewer(config, request.form.get("name", ""))
-        return done("reviewers", "Name added to the audit team.")
-
-    @app.post("/reviewers/<int:item_id>")
-    @require("reviewers.manage")
-    def person(item_id):
-        action = request.form.get("action")
-        if action == "rename":
-            rename_reviewer(config, item_id, request.form.get("name", ""))
-        elif action in {"activate", "deactivate"}:
-            set_reviewer_active(config, item_id, action == "activate")
-        elif action == "delete":
-            delete_reviewer(config, item_id)
-        else:
-            abort(400, "Invalid roster action.")
-        return done("reviewers", "Audit team updated.")
-
     @app.post("/assignment/<int:item_id>")
     @require("audits.assign")
     def assignment(item_id):
-        value = request.form.get("reviewer_id", "")
+        value = request.form.get("assignee_user_id", "")
         if value and not value.isdigit():
             abort(400, "Choose an active reviewer.")
         assign_reviewer(config, item_id, int(value) if value else None)

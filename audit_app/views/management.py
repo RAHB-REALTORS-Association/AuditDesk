@@ -1,30 +1,9 @@
-"""Selection, reviewer roster, application access, and activity views."""
+"""Selection, application access, and activity views."""
 import html
 
 from ..database import connect
 from ..settings import display_percent, selection_percent
 from .common import esc, retry_token
-
-
-def reviewers_view(config, reviewers, error=""):
-    rows = ""
-    for person in reviewers:
-        reviewer_id = person["id"]
-        action = "deactivate" if person["active"] else "activate"
-        rows += f'''<tr><td><form method="post" action="/reviewers/{reviewer_id}" class="reviewer-form">
-            <input type="hidden" name="token" value="{retry_token(config, f"reviewer:{reviewer_id}")}">
-            <input name="name" aria-label="Name" maxlength="80" required value="{html.escape(person["name"], quote=True)}">
-            <button name="action" value="rename">Save name</button>
-            <button name="action" value="{action}">{"Remove from list" if person["active"] else "Restore to list"}</button>
-            <button name="action" value="delete" class="delete-button" formnovalidate onclick="return confirm('Delete this team member? Their unfinished audits will need reassignment.');">Delete</button>
-            </form></td><td>{"Available" if person["active"] else "Inactive"}</td></tr>'''
-    return f'''<section class="panel roster-panel"><div class="panel-head"><div><h2>Audit team</h2><p>Names available in the audit assignment dropdown</p></div></div>
-        <div class="roster-content">{'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
-        <form method="post" action="/reviewers" class="reviewer-form"><input type="hidden" name="token" value="{retry_token(config, "reviewers")}">
-        <input name="name" aria-label="New team member name" maxlength="80" required placeholder="Team member name"><button class="primary-button" type="submit">Add name</button></form>
-        <p>Remove from list hides a name from new assignments and can be undone. Delete removes the roster entry; unfinished audits assigned to that person will need reassignment. The former name remains visible on those audit records.</p>
-        <table class="roster-table"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody>{rows or '<tr><td colspan="2">No names yet. Add one above to begin assigning audits.</td></tr>'}</tbody></table></div></section>'''
-
 
 
 def admin_view(config, value=None, error=""):
@@ -49,7 +28,7 @@ def users_view(config):
         user = dict(user) if user else {"email": "", "display_name": "", "role": "reviewer", "active": 1, "version": 0}
         roles = "".join(f'<option value="{role}" {"selected" if role == user["role"] else ""}>{label}</option>' for role, label in (("reviewer", "Reviewer"), ("manager", "Audit manager"), ("admin", "IT administrator")))
         return f'<form method="post" action="/users" class="access-form"><input type="hidden" name="token" value="{retry_token(config, "users")}"><input type="hidden" name="version" value="{user["version"]}"><label>Email <input type="email" name="email" required value="{html.escape(user["email"], quote=True)}" {"readonly" if user["email"] else ""}></label><label>Display name <input name="display_name" maxlength="100" value="{html.escape(user["display_name"], quote=True)}"></label><label>Role <select name="role">{roles}</select></label><label class="access-active"><input type="checkbox" name="active" value="1" {"checked" if user["active"] else ""}> Active</label><button type="submit">{"Save access" if user["email"] else "Grant access"}</button></form>'
-    return '<section class="panel access-panel"><div class="panel-head"><h2>People and roles</h2></div><div class="access-content"><p class="form-help">Cloudflare verifies identity. Only active people listed here may use AuditDesk. Bootstrap administrators are protected.</p>' + "".join(form(user) for user in users) + '<h3 class="access-heading">Add a person</h3>' + form() + '</div></section>'
+    return '<section class="panel access-panel"><div class="panel-head"><h2>People and roles</h2></div><div class="access-content"><p class="form-help">Cloudflare verifies identity. Only active people listed here may use AuditDesk. Active Reviewers, Audit managers, and IT administrators can be assigned audits. Bootstrap administrators are protected.</p>' + "".join(form(user) for user in users) + '<h3 class="access-heading">Add a person</h3>' + form() + '</div></section>'
 
 
 

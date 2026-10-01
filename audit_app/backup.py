@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from .database import connect, init_db
+from .database import SCHEMA_VERSION, connect, init_db
 from .job import job_lock
 
 
@@ -15,7 +15,7 @@ def validate(path):
         if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok" or db.execute("PRAGMA foreign_key_check").fetchone():
             raise ValueError("Backup failed database integrity checks")
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in {0, 1}:
+        if version not in range(SCHEMA_VERSION + 1):
             raise ValueError("Backup schema is unsupported")
         for table in ("listings", "audits", "runs", "email_attempts"):
             db.execute(f"SELECT id FROM {table} LIMIT 1")

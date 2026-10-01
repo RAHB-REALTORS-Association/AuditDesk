@@ -768,7 +768,7 @@ footer {
   min-width: 200px;
 }
 
-.assignment-form select,.reviewer-form input {
+.assignment-form select {
   min-width: 0;
   border: 1px solid #cbd2d9;
   border-radius: 7px;
@@ -782,46 +782,6 @@ footer {
   max-width: 165px;
   min-width: 120px;
   flex: 1;
-}
-
-.roster-panel {
-  max-width: 800px;
-}
-
-.roster-content {
-  padding: 20px;
-}
-
-.roster-content p {
-  font-size: 12px;
-  color: #64707d;
-  line-height: 1.5;
-}
-
-.reviewer-form {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.reviewer-form input {
-  min-width: 0;
-  flex: 1 1 200px;
-  width: 100%;
-}
-
-.roster-table {
-  min-width: 0;
-  margin-top: 20px;
-}
-
-.roster-table td {
-  max-width: none;
-}
-
-.roster-table th:last-child,.roster-table td:last-child {
-  width: 110px;
 }
 
 .sidebar-label.admin-label {
@@ -904,16 +864,6 @@ footer {
   border: 1px solid #f0d1a6;
   padding: 11px 13px;
   border-radius: 8px;
-}
-
-.reviewer-form .delete-button {
-  background: #fff5f3;
-  border-color: #e5b8b1;
-  color: #a63e34;
-}
-
-.reviewer-form .delete-button:hover {
-  background: #fee8e4;
 }
 
 .report-summary {
@@ -1474,7 +1424,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .template-form,.preview-content,.outcome-content,.roster-content,.admin-content,.access-content {
+  .template-form,.preview-content,.outcome-content,.admin-content,.access-content {
     padding: 16px;
   }
 
@@ -1484,28 +1434,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 
   .form-actions button {
     flex: 1;
-  }
-
-  .roster-table thead {
-    display: none;
-  }
-
-  .roster-table tr {
-    display: block;
-    border-top: 1px solid var(--border);
-  }
-
-  .roster-table td {
-    display: block;
-    width: auto;
-    max-width: none;
-    border: 0;
-    padding: 12px 0;
-  }
-
-  .roster-table td:last-child {
-    width: auto;
-    padding-top: 0;
   }
 
   .live-dot {
@@ -1552,7 +1480,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .template-form,.preview-content,.outcome-content,.roster-content,.admin-content,.access-content {
+  .template-form,.preview-content,.outcome-content,.admin-content,.access-content {
     padding: 16px;
   }
 
@@ -1562,28 +1490,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 
   .form-actions button {
     flex: 1;
-  }
-
-  .roster-table thead {
-    display: none;
-  }
-
-  .roster-table tr {
-    display: block;
-    border-top: 1px solid var(--border);
-  }
-
-  .roster-table td {
-    display: block;
-    width: auto;
-    max-width: none;
-    border: 0;
-    padding: 12px 0;
-  }
-
-  .roster-table td:last-child {
-    width: auto;
-    padding-top: 0;
   }
 
   .live-dot {
@@ -1629,7 +1535,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .template-form,.preview-content,.outcome-content,.roster-content,.admin-content,.access-content {
+  .template-form,.preview-content,.outcome-content,.admin-content,.access-content {
     padding: 16px;
   }
 
@@ -1639,28 +1545,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 
   .form-actions button {
     flex: 1;
-  }
-
-  .roster-table thead {
-    display: none;
-  }
-
-  .roster-table tr {
-    display: block;
-    border-top: 1px solid var(--border);
-  }
-
-  .roster-table td {
-    display: block;
-    width: auto;
-    max-width: none;
-    border: 0;
-    padding: 12px 0;
-  }
-
-  .roster-table td:last-child {
-    width: auto;
-    padding-top: 0;
   }
 
   .live-dot {
