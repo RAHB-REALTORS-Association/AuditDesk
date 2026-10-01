@@ -68,7 +68,8 @@ def load_config():
     if env == "development" and public_url == "auto":
         # Coolify supplies each PR's generated URL. TLS terminates at Cloudflare;
         # its HTTP origin route must not become the browser's CSRF origin.
-        preview = urlparse(os.getenv("COOLIFY_URL", "").split(",")[0].strip())
+        generated = os.getenv("COOLIFY_URL", "").split(",")[0].strip()
+        preview = urlparse(generated if "://" in generated else "https://" + generated)
         if not preview.hostname or preview.username or preview.path not in {"", "/"}:
             raise ValueError("Development PUBLIC_BASE_URL=auto requires a valid COOLIFY_URL")
         public_url = "https://" + preview.netloc

@@ -115,11 +115,12 @@ class DevelopmentTests(unittest.TestCase):
                 validate_web_config(replace(self.config, env=mode, auth_mode='open'))
 
     def test_generated_pr_domain_uses_cloudflare_https_origin(self):
-        with patch.dict(os.environ, {'APP_ENV': 'development', 'PUBLIC_BASE_URL': 'auto',
-                                     'COOLIFY_URL': 'http://auditdesk-pr12.oncornerstone.app'}, clear=True):
-            config = load_config()
-        self.assertEqual(config.public_url, 'https://auditdesk-pr12.oncornerstone.app')
-        validate_web_config(config)
+        for generated in ('http://auditdesk-pr12.oncornerstone.app', 'auditdesk-pr12.oncornerstone.app'):
+            with patch.dict(os.environ, {'APP_ENV': 'development', 'PUBLIC_BASE_URL': 'auto',
+                                         'COOLIFY_URL': generated}, clear=True):
+                config = load_config()
+            self.assertEqual(config.public_url, 'https://auditdesk-pr12.oncornerstone.app')
+            validate_web_config(config)
         with patch.dict(os.environ, {'APP_ENV': 'development', 'PUBLIC_BASE_URL': 'auto'}, clear=True):
             with self.assertRaises(ValueError):
                 load_config()

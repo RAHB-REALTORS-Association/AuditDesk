@@ -41,7 +41,7 @@ try:
     docker('rm','-f',name)
     docker('run','-d','--name',name,
            '-e','APP_ENV=development','-e','PUBLIC_BASE_URL=auto',
-           '-e','COOLIFY_URL=http://auditdesk-pr1.oncornerstone.app',
+           '-e','COOLIFY_URL=auditdesk-pr1.oncornerstone.app',
            '-e','DATABASE_PATH=/app/data/audit.sqlite3',
            '-e','EMAIL_ENABLED=true','-e','SCHEDULER_ENABLED=true',
            '-e','BRIDGE_API_KEY=ignored-sentinel','-e','SENDGRID_API_KEY=ignored-sentinel',image)
