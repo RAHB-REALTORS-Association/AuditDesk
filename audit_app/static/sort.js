@@ -1,4 +1,4 @@
-document.querySelectorAll('table[data-sortable]').forEach((table) => {
+document.querySelectorAll('table[data-sortable]:not([data-server-list])').forEach((table) => {
   const body = table.tBodies[0];
   const headings = Array.from(table.tHead.rows[0].cells);
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });

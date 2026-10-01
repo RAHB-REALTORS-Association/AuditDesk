@@ -3,9 +3,11 @@
 Feature-specific HTML belongs in views/. Request handling belongs in application.py.
 """
 from flask import g, has_request_context
+import re
 
 from .assignment import can_audit, eligible_assignees
 from .database import connect
+from .lists import query_page
 from .security import allowed
 from .views.common import badge, esc, local_time, recipients, retry_token, sort_heading
 from .views.emails import template_editor
@@ -34,19 +36,38 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             "sent": db.execute("SELECT count(*) FROM audits WHERE email_status='email_sent'").fetchone()[0],
             "failed": db.execute("SELECT count(*) FROM audits WHERE email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
-        audits = db.execute("""SELECT a.*, l.mls_number, l.address, l.agent_email,
-            COALESCE(NULLIF(ar.display_name,''),ar.email) AS reviewer_name, ar.active AS active, ar.role AS role FROM audits a
-            JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id
-            ORDER BY a.selected_at DESC LIMIT 200""").fetchall()
+        audits, listings, runs = [], [], []
         reviewers = eligible_assignees(db)
-        listings = db.execute("SELECT * FROM listings ORDER BY first_processed_at DESC LIMIT 200").fetchall()
-        runs = db.execute("""SELECT r.*,
-            (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
-              AND a.email_status IN ('email_failed','email_unknown','email_blocked')) AS email_issues,
-            (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
-              AND a.email_status='email_pending') AS email_pending
-            FROM runs r ORDER BY r.started_at DESC LIMIT 50""").fetchall()
-        previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
+        if tab == "audits":
+            audits, list_page = query_page(db, tab, """SELECT a.*, l.mls_number, l.address, l.agent_email,
+                COALESCE(NULLIF(ar.display_name,''),ar.email) AS reviewer_name, ar.active AS active, ar.role AS role,
+                (SELECT count(*) FROM audits prior WHERE prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
+                CASE WHEN a.outcome IS NOT NULL THEN 'completed' WHEN ar.active=1 THEN 'in_progress'
+                  WHEN a.assignee_user_id IS NOT NULL THEN 'needs_reassignment' ELSE 'not_started' END AS work_status
+                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id""",
+                ('mls_number','address','brokerage_name','broker_name','agent_name','agent_email','reviewer_name'),
+                'email_status', {'MLS / Property':'mls_number','Selected':'selected_at','Brokerage / Broker':'brokerage_name',
+                'Agent':'agent_name','Intended recipients':'intended_to','Actual recipient':'actual_recipients',
+                'Mode / Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count'}, 'selected_at')
+        elif tab == "listings":
+            listings, list_page = query_page(db, tab, 'SELECT * FROM listings',
+                ('mls_number','address','brokerage_name','agent_name'), 'processing_status',
+                {'MLS / Property':'mls_number','Entered':'entry_timestamp','Brokerage':'brokerage_name',
+                 'Listing agent':'agent_name','Processing status':'processing_status'}, 'first_processed_at')
+        elif tab == "runs":
+            source = """SELECT r.*,
+                (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
+                  AND a.email_status IN ('email_failed','email_unknown','email_blocked')) AS email_issues,
+                (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
+                  AND a.email_status='email_pending') AS email_pending
+                FROM runs r"""
+            source = f"""SELECT *, CASE WHEN status='completed' AND email_issues>0 THEN 'completed_with_email_errors'
+                WHEN status='completed' AND email_pending>0 THEN 'completed_with_pending_email'
+                ELSE status END AS display_status FROM ({source})"""
+            runs, list_page = query_page(db, tab, source, ('started_at','display_status','error'), 'display_status',
+                {'Started':'started_at','Status':'display_status','Fetched':'fetched_count','New':'new_count',
+                 'Selected':'selected_count','Error':'error'}, 'started_at')
+
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
     admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("users", "Access management"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
     if config.test_mode:
@@ -93,10 +114,10 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         rows = "".join(f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["entry_timestamp"])}">{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
         title, subtitle = "Listings considered", "Every new active listing evaluated by the daily selection job."
     elif tab == "runs":
-        headings = "<th>Started</th><th>Status</th><th>Fetched</th><th>New</th><th>Selected</th><th>Error</th>"
+        headings = "".join(sort_heading(label, "number" if label in {"Fetched", "New", "Selected"} else "text") for label in ("Started", "Status", "Fetched", "New", "Selected", "Error"))
         rows = ""
         for r in runs:
-            status = "completed_with_email_errors" if r["status"] == "completed" and r["email_issues"] else r["status"]
+            status = r["display_status"]
             detail = r["error"] or (f'{r["email_issues"]} email(s) need attention; see audit history' if r["email_issues"] else
                                     f'{r["email_pending"]} email(s) pending; check email configuration' if r["email_pending"] else "")
             if status == "completed" and r["email_pending"]:
@@ -136,19 +157,21 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 assignment = ""
             reviewer_label = r["reviewer_name"] or ""
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
-            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{previous[r["id"]]}">{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
+            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
     if tab not in {"template", "failure_template", "outcome", "admin", "report", "brokerages", "users", "activity"}:
         if not rows:
-            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
+            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
         bulk = ""
         if tab == "audits" and allowed("audits.assign") and audits:
             bulk_options = '<option value="" disabled selected>Choose an assignment</option><option value="unassigned">Unassigned — clear assignment</option>' + "".join(
                 f'<option value="{person["id"]}">{esc(person["display_name"] or person["email"])}{(" · " + esc(person["email"])) if person["display_name"] else ""}</option>'
                 for person in reviewers)
-            bulk = f'<form id="bulk-assignment" method="post" action="/assignments" class="bulk-assignment"><input type="hidden" name="token" value="{retry_token(config, "assignments")}"><span data-selection-count aria-live="polite">0 selected</span><label>Assign selected to <select name="assignee_user_id" required>{bulk_options}</select></label><button type="submit" class="primary-button" disabled>Apply to selected</button><button type="button" data-clear-selection disabled>Clear selection</button></form>'
-        content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>Showing the most recent {200 if tab != "runs" else 50} records{" · Click a column heading to sort these records" if tab in {"audits", "listings"} else ""}</p></div><span class="live-dot">● &nbsp; Current data</span></div>{bulk}<div class="table-wrap"><table data-columns="{tab}" class="{"history-table" if tab == "audits" else "listing-table" if tab == "listings" else "runs-table"}"{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div></section>'
-    content = content.replace('</form>', f'<input type="hidden" name="revision" value="{revision}"></form>')
+            bulk = f'<form id="bulk-assignment" data-owner="{esc(g.principal.subject) if has_request_context() else "local"}" method="post" action="/assignments" class="bulk-assignment"><input type="hidden" name="token" value="{retry_token(config, "assignments")}"><span data-selection-count aria-live="polite">0 selected</span><label>Assign selected to <select name="assignee_user_id" required>{bulk_options}</select></label><button type="submit" class="primary-button" disabled>Apply to selected</button><button type="button" data-clear-selection disabled>Clear selection</button></form>'
+        content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>{list_page.total:,} matching records · Sort by a column heading</p></div><span class="live-dot">● &nbsp; Current data</span></div>{list_page.filters()}{bulk}<div class="table-wrap"><table data-server-list data-columns="{tab}" class="{"history-table" if tab == "audits" else "listing-table" if tab == "listings" else "runs-table"}"{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div>{list_page.footer()}</section>'
+    content = re.sub(r'<form\b[^>]*>.*?</form>',
+                     lambda match: match[0].replace('</form>', f'<input type="hidden" name="revision" value="{revision}"></form>')
+                     if 'method="post"' in match[0].split('>', 1)[0] else match[0], content, flags=re.DOTALL)
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MLS Audit Desk</title><link rel="stylesheet" href="/static/app.css"></head>
-<body><a class="skip-link" href="#main">Skip to content</a><button class="menu-backdrop" type="button" aria-label="Close menu" hidden></button><aside class="sidebar" id="sidebar"><button class="menu-close" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav><div class="sidebar-foot">Daily selection · {esc(config.timezone)}</div></aside>
+<body><a class="skip-link" href="#main">Skip to content</a><button class="menu-backdrop" type="button" aria-label="Close menu" hidden></button><aside class="sidebar" id="sidebar"><button class="menu-close" type="button" aria-label="Close menu"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg></button><div class="brand"><img class="brand-logo" src="/static/cornerstone-logo-white.png" alt="Cornerstone Association of REALTORS"><strong class="brand-caption">Compliance Audit Desk</strong></div><div class="sidebar-label">WORKSPACE</div><nav>{nav}</nav><div class="sidebar-label admin-label">ADMIN</div><nav>{admin_nav}</nav></aside>
 <div class="workspace"><header class="topbar"><button class="menu-toggle" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><span class="topbar-title">Audit operations</span><div class="identity">{esc(g.principal.name) if has_request_context() else "Audit Desk"}<small>{esc({"admin": "IT administrator", "manager": "Audit manager", "reviewer": "Reviewer"}.get(g.principal.role, g.principal.role)) if has_request_context() else ""}</small></div></header><main id="main"><header class="page-head"><div><div class="eyebrow">OPERATIONS / {esc(title.upper())}</div><h1>{esc(title)}</h1><p>{esc(subtitle)}</p></div></header>{banner}{'<div class="notice">'+esc(notice)+'</div>' if notice else ''}{content}<footer>Audit Desk · Internal use only</footer></main></div><script src="/static/shell.js" defer></script><script src="/static/bulk-assignment.js" defer></script><script src="/static/columns.js" defer></script><script src="/static/sort.js" defer></script><script src="/static/branches.js" defer></script></body></html>'''

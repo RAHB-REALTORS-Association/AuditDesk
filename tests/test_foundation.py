@@ -265,6 +265,42 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('Completed With Pending Email', page)
         self.assertIn('email(s) pending; check email configuration', page)
 
+    def test_lists_page_filter_and_sort_the_full_history(self):
+        with connect(self.config.database_path) as db:
+            for number in range(205):
+                db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status) VALUES(?,?,'Active',?,'Example',?,?)""",
+                    (str(number),f'PAGE-{number:03}',NOW.isoformat(),NOW.isoformat(),
+                     'email_failed' if number % 2 else 'processed_not_selected'))
+            db.commit()
+        page = self.get('/?tab=listings&per_page=10&page=21',role='reviewer').text
+        self.assertIn('201–205 of 205 records',page)
+        self.assertIn('<strong>PAGE-000</strong>',page)
+        self.assertNotIn('<strong>PAGE-204</strong>',page)
+        page = self.get('/?tab=listings&per_page=10&sort=MLS+%2F+Property&direction=asc').text
+        self.assertIn('<strong>PAGE-000</strong>',page)
+        self.assertNotIn('<strong>PAGE-204</strong>',page)
+        page = self.get('/?tab=listings&q=PAGE-20&status=email_failed').text
+        self.assertIn('1–2 of 2 records',page)
+        self.assertIn('<strong>PAGE-201</strong>',page)
+        self.assertNotIn('<strong>PAGE-202</strong>',page)
+        page = self.get('/?tab=listings&q=%27+OR+1%3D1--').text
+        self.assertIn('0–0 of 0 records',page)
+        self.assertIn('No records match these filters',page)
+        for query in ('per_page=100000','page=0','page=abc','page=999999999999'):
+            self.assertEqual(self.get('/?tab=listings&'+query).status_code,400)
+        page = self.get('/?tab=listings&page=999').text
+        self.assertIn('Page 9 of 9',page)
+
+    def test_filters_and_pagination_are_present_on_every_list(self):
+        for tab in ('audits','listings','runs','report','brokerages','activity'):
+            with self.subTest(tab=tab):
+                response = self.get('/?tab='+tab)
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertIn('class="list-filters"',response.text)
+                self.assertIn('Rows per page',response.text)
+                self.assertNotIn('Daily selection ·',response.text)
+
     def test_intake_catches_up_from_last_success(self):
         run_job(self.config,FakeClient([]),now=NOW,sender=Mock())
         client=Mock();client.active_new_listings.return_value=[]

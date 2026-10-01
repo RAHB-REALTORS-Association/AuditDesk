@@ -1,6 +1,7 @@
 """Daily intake and brokerage statistics presentation."""
 from ..brokerage_report import PERIODS, brokerage_statistics
 from ..report import daily_audit_report
+from ..lists import paginate_records
 from .common import badge, esc, sort_heading
 
 
@@ -9,8 +10,9 @@ def report_view(config):
     total = sum(row["listings"] for row in daily)
     audited = sum(row["audited"] for row in daily)
     overall = f"{100 * audited / total:.1f}%" if total else "—"
+    shown, page = paginate_records('report', daily, lambda row: str(row['date']) + ' ' + row['status'], lambda row: row['status'])
     rows = ""
-    for row in daily:
+    for row in shown:
         recorded = row["status"] in {"Recorded", "Run had errors"} or bool(row["listings"])
         listings = str(row["listings"]) if recorded else "—"
         selected = str(row["audited"]) if recorded else "—"
@@ -20,7 +22,7 @@ def report_view(config):
         <div><span>Audited</span><strong>{audited}</strong></div><div><span>Audit percentage</span><strong>{overall}</strong></div></section>
         <section class="panel report-panel"><div class="panel-head"><div><h2>Daily audit report</h2><p>Past 90 days, newest first</p></div></div>
         <div class="report-note">Counts are unique new Active listings first processed by the app on each date in {esc(config.timezone)}, including manual test runs. A day without a completed run is shown as unavailable rather than zero.</div>
-        <div class="table-wrap"><table data-columns="daily-report" class="report-table"><thead><tr><th>Date</th><th>Total listings</th><th>Audited listings</th><th>Audit %</th><th>Run status</th></tr></thead><tbody>{rows}</tbody></table></div></section>'''
+        {page.filters()}<div class="table-wrap"><table data-server-list data-columns="daily-report" class="report-table"><thead><tr><th>Date</th><th>Total listings</th><th>Audited listings</th><th>Audit %</th><th>Run status</th></tr></thead><tbody>{rows}</tbody></table></div>{page.footer()}</section>'''
 
 
 
@@ -41,8 +43,12 @@ def brokerage_view(config, period):
                 f'<td data-sort="{row["pass_rate"] if row["pass_rate"] is not None else ""}">{rate_text(row["pass_rate"])}</td>'
                 f'<td data-sort="{row["failed"]}">{row["failed"]:,}</td>'
                 f'<td data-sort="{row["fail_rate"] if row["fail_rate"] is not None else ""}">{rate_text(row["fail_rate"])}</td>')
+    shown, page = paginate_records('brokerages', report['rows'],
+        lambda row: row['name'] + ' ' + ' '.join(branch['address'] or '' for branch in row['branches']),
+        sorts={'Brokerage':'name','Listings':'listings','Audited':'audited','Audit %':'percentage',
+               'Passed':'passed','Pass rate':'pass_rate','Failed':'failed','Fail rate':'fail_rate'}, default='listings')
     rows = ""
-    for index, row in enumerate(report["rows"]):
+    for index, row in enumerate(shown):
         branch_label = "branch" if row["branch_count"] == 1 else "branches"
         address = row["branches"][0]["address"] if row["branch_count"] == 1 else None
         details = f'<small>{esc(address) if address else str(row["branch_count"]) + " " + branch_label}</small>'
@@ -58,7 +64,7 @@ def brokerage_view(config, period):
             for branch_index, branch in enumerate(row["branches"]))
         rows += f'<tbody class="brokerage-group" id="brokerage-branches-{index}">{parent}{branches}</tbody>'
     if not rows:
-        rows = '<tbody><tr><td colspan="8" class="empty">No listings were recorded in this period.</td></tr></tbody>'
+        rows = '<tbody><tr><td colspan="8" class="empty">No brokerages match these filters.</td></tr></tbody>'
     coverage = (f'Available app records begin {report["first_recorded"]:%b %d, %Y}; earlier dates in this period have no app history.'
                 if report["first_recorded"] and report["first_recorded"] > report["start"] else
                 "The selected period is covered by available app history.")
@@ -79,5 +85,5 @@ def brokerage_view(config, period):
         <section class="panel brokerage-panel"><div class="panel-head"><div><h2>Brokerage statistics</h2>
         <p>{report["start"]:%b %d, %Y} – {report["end"]:%b %d, %Y} · {report["period_label"].title()} · {len(report["rows"]):,} brokerages</p></div></div>
         <div class="report-note">Branches with the same brokerage name are combined. Select “View branches” to see each office address and its statistics. Listings are unique new Active listings first processed by this app; audited listings have a saved audit selection. Pass and fail rates use completed audits only ({report["completed"]:,} of {report["audited"]:,} selected audits have a result). Includes manual test runs. {esc(coverage)} This is not a count of every MLS listing.</div>
-        <div class="table-wrap"><table data-columns="brokerages" class="brokerage-table" data-sortable data-sort-groups><thead><tr>{headings}</tr></thead>{rows}</table></div></section>'''
+        {page.filters()}<div class="table-wrap"><table data-server-list data-columns="brokerages" class="brokerage-table" data-sortable data-sort-groups><thead><tr>{headings}</tr></thead>{rows}</table></div>{page.footer()}</section>'''
 

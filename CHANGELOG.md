@@ -71,3 +71,10 @@
 - Include recipient-validation failures in the scheduled run's email error summary.
 - Surface unresolved email errors on older completed runs, and distinguish pending mail when delivery is disabled.
 - Keep completed intake from being repeated merely because a notification failed.
+
+## PR 3 — list navigation
+
+- Combine search, status filters, and column visibility in one compact list control.
+- Add selectable row counts and First/Previous/Next/Last controls to all six table views; remove fixed recent-record cutoffs.
+- Sort and search full matching histories, preserve brokerage groups and bulk selections across pages, and retain full export scope.
+- Remove the sidebar's daily-selection timezone footer.
