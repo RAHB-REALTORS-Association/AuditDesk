@@ -17,7 +17,7 @@ from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
 from . import web
-from .assignment import assign_reviewer
+from .assignment import assign_audits, assign_reviewer
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
@@ -91,7 +91,8 @@ def create_app(config=None, verifier=None):
         if request.method == "POST":
             if request.mimetype != "application/x-www-form-urlencoded":
                 abort(415, "Use an application form to submit changes.")
-            if any(len(values) != 1 for _, values in request.form.lists()):
+            if any(len(values) != 1 for key, values in request.form.lists()
+                   if not (request.path == "/assignments" and key == "audit_ids")):
                 abort(400, "Repeated form fields are not allowed.")
             check_csrf(config)
             revision = request.form.get("revision", "")
@@ -168,11 +169,27 @@ def create_app(config=None, verifier=None):
     @app.post("/assignment/<int:item_id>")
     @require("audits.assign")
     def assignment(item_id):
-        value = request.form.get("assignee_user_id", "")
-        if value and not value.isdigit():
+        if "assignee_user_id" not in request.form:
+            abort(400, "Reload the assignment form before saving.")
+        value = request.form["assignee_user_id"]
+        if value and (not value.isascii() or not value.isdigit()):
             abort(400, "Choose an active reviewer.")
         assign_reviewer(config, item_id, int(value) if value else None)
         return done("audits", "Assignment saved.")
+
+    @app.post("/assignments")
+    @require("audits.assign")
+    def bulk_assignment():
+        ids = request.form.getlist("audit_ids")
+        if not ids or len(ids) > 200 or any(not value.isascii() or not value.isdigit() for value in ids):
+            abort(400, "Select between 1 and 200 audits.")
+        if "assignee_user_id" not in request.form:
+            abort(400, "Choose an assignment.")
+        value = request.form["assignee_user_id"]
+        if value != "unassigned" and (not value.isascii() or not value.isdigit()):
+            abort(400, "Choose an active reviewer.")
+        assign_audits(config, [int(item) for item in ids], None if value == "unassigned" else int(value))
+        return done("audits", f"Assignment updated for {len(ids)} audits.")
 
     @app.post("/template")
     @app.post("/failure-template")
