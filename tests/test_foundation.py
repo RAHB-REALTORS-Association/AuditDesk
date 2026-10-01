@@ -240,6 +240,31 @@ class FoundationTests(unittest.TestCase):
         result=run_job(cfg,FakeClient([]),now=NOW+timedelta(minutes=5),only_if_needed=True,sender=sender)
         self.assertNotIn('skipped',result)
 
+    def test_recipient_errors_mark_run_and_remain_visible_on_older_runs(self):
+        item = listing('routing-error')
+        item['broker_email'] = ''
+        sender = Mock()
+        run_job(self.config, FakeClient([item]), now=NOW, sender=sender)
+        sender.assert_not_called()
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT status FROM runs').fetchone()[0], 'completed_with_email_errors')
+            # Existing runs from older builds still surface unresolved delivery errors.
+            db.execute("UPDATE runs SET status='completed',error=NULL")
+            db.commit()
+        page = self.get('/?tab=runs', role='reviewer').text
+        self.assertIn('Completed With Email Errors', page)
+        self.assertIn('1 email(s) need attention', page)
+        client = Mock()
+        result = run_job(self.config, client, now=NOW, only_if_needed=True, sender=sender)
+        self.assertEqual(result['skipped'], 'already_ran_today')
+        client.active_new_listings.assert_not_called()
+
+    def test_disabled_email_is_visible_as_pending_on_run_list(self):
+        run_job(replace(self.config,email_enabled=False), FakeClient([listing('pending')]), now=NOW)
+        page = self.get('/?tab=runs').text
+        self.assertIn('Completed With Pending Email', page)
+        self.assertIn('email(s) pending; check email configuration', page)
+
     def test_intake_catches_up_from_last_success(self):
         run_job(self.config,FakeClient([]),now=NOW,sender=Mock())
         client=Mock();client.active_new_listings.return_value=[]

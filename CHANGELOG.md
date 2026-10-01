@@ -65,3 +65,9 @@
 - Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access authenticates test/production; development is an open synthetic sandbox. Email delivery now defaults to disabled in configuration as well as containers.
 
 - Disposable development/PR previews: seeded synthetic audits, fixed demo identity, ignored integration credentials, hard Bridge/email guards, no scheduler or volume, and retained form protection.
+
+## PR 3 — run delivery visibility
+
+- Include recipient-validation failures in the scheduled run's email error summary.
+- Surface unresolved email errors on older completed runs, and distinguish pending mail when delivery is disabled.
+- Keep completed intake from being repeated merely because a notification failed.

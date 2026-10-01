@@ -40,7 +40,12 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             ORDER BY a.selected_at DESC LIMIT 200""").fetchall()
         reviewers = eligible_assignees(db)
         listings = db.execute("SELECT * FROM listings ORDER BY first_processed_at DESC LIMIT 200").fetchall()
-        runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
+        runs = db.execute("""SELECT r.*,
+            (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
+              AND a.email_status IN ('email_failed','email_unknown','email_blocked')) AS email_issues,
+            (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
+              AND a.email_status='email_pending') AS email_pending
+            FROM runs r ORDER BY r.started_at DESC LIMIT 50""").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
     nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
     admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("users", "Access management"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
@@ -89,7 +94,14 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Listings considered", "Every new active listing evaluated by the daily selection job."
     elif tab == "runs":
         headings = "<th>Started</th><th>Status</th><th>Fetched</th><th>New</th><th>Selected</th><th>Error</th>"
-        rows = "".join(f'<tr><td>{esc(local_time(r["started_at"], config.timezone))}</td><td>{badge(r["status"])}</td><td>{r["fetched_count"]}</td><td>{r["new_count"]}</td><td>{r["selected_count"]}</td><td class="error">{esc(r["error"])}</td></tr>' for r in runs)
+        rows = ""
+        for r in runs:
+            status = "completed_with_email_errors" if r["status"] == "completed" and r["email_issues"] else r["status"]
+            detail = r["error"] or (f'{r["email_issues"]} email(s) need attention; see audit history' if r["email_issues"] else
+                                    f'{r["email_pending"]} email(s) pending; check email configuration' if r["email_pending"] else "")
+            if status == "completed" and r["email_pending"]:
+                status = "completed_with_pending_email"
+            rows += f'<tr><td>{esc(local_time(r["started_at"], config.timezone))}</td><td>{badge(status)}</td><td>{r["fetched_count"]}</td><td>{r["new_count"]}</td><td>{r["selected_count"]}</td><td class="error">{esc(detail)}</td></tr>'
         title, subtitle = "Scheduled runs", "Recent daily jobs and any errors they encountered."
     else:
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Selected", "date", True),
