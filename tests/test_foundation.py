@@ -302,10 +302,23 @@ class FoundationTests(unittest.TestCase):
                 self.assertIn('Rows per page',response.text)
                 self.assertNotIn('Daily selection ·',response.text)
 
+    def test_combined_selection_save_is_atomic_and_role_checked(self):
+        form = {'rate_percent':'8.5','cooldown_days':'21','broker_cooldown_days':'7','window_hours':'48'}
+        self.assertEqual(self.post('/manage/selection',form,role='reviewer').status_code,403)
+        self.assertEqual(self.post('/manage/selection',form,role='manager',page='/?tab=manage').status_code,303)
+        for invalid in ({'rate_percent':'101'}, {'cooldown_days':'366'}, {'window_hours':'0'}):
+            self.assertEqual(self.post('/manage/selection',{**form,'rate_percent':'9',**invalid},role='manager',page='/?tab=manage').status_code,400)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT rate_percent FROM selection_settings').fetchone()[0],'8.5')
+            self.assertEqual(db.execute('SELECT days FROM brokerage_cooldown_settings').fetchone()[0],21)
+            row=db.execute('SELECT * FROM workflow_settings').fetchone()
+            self.assertEqual((row['broker_cooldown_days'],row['window_hours']),(7,48))
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='settings.selection_updated'").fetchone()[0],1)
+
     def test_manage_groups_controls_and_enforces_workflow_permissions(self):
         self.assertEqual(self.get('/?tab=manage',role='reviewer').status_code,403)
         manager = self.get('/?tab=manage',role='manager').text
-        self.assertIn('Save workflow settings',manager)
+        self.assertIn('Save selection settings',manager)
         self.assertIn('Audit request email',manager)
         self.assertNotIn('href="/?tab=users"',manager)
         self.assertIn('href="/?tab=users"',self.get('/?tab=manage').text)

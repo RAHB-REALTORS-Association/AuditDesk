@@ -77,3 +77,5 @@
 - Add Manage → Recovery for IT administrators to download consistent database snapshots and validate/stage restore uploads.
 - Check uploaded database structure, integrity, supported schema, migration, and administrator access without changing live state; preserve original backup schema and show counts, SHA-256, and restore instructions.
 - Keep replacement offline, preserve pre-restore snapshots, restrict recovery to administrators in test/production, and record export requests and restore staging in activity history.
+
+- Consolidate selection percentage, office and individual broker cooldowns, and intake window into one consistently styled form with an atomic Save action.

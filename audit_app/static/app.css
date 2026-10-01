@@ -1680,3 +1680,6 @@ a.sort-button { color: inherit; text-decoration: none; }
 .restore-upload input[type=file] { width: 100%; max-width: 100%; padding: 10px; }
 .recovery-command { padding: 16px; background: var(--canvas); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .admin-content code { overflow-wrap: anywhere; }
+
+.selection-settings-form input[type="number"] { display:block; width:100%; max-width:16rem; padding:.75rem; border:1px solid var(--border, #cbd5e1); border-radius:.625rem; font:inherit; margin-top:.5rem; }
+.selection-settings-form .form-help { margin-top:.5rem; margin-bottom:1.5rem; }

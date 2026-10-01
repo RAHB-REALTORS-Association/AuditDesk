@@ -81,7 +81,7 @@ class SelectionSettingsTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             metadata = json.loads(db.execute("SELECT selection_metadata FROM audits ORDER BY id DESC LIMIT 1").fetchone()[0])
         self.assertEqual(metadata["brokerage_cooldown_days"], 0)
-        self.assertIn("0 days", render(restarted, "admin"))
+        self.assertRegex(render(restarted, "admin"), r'id="cooldown-days"[^>]*value="0"')
 
     def test_invalid_cooldowns_do_not_change_saved_value_or_percentage(self):
         save_selection_percent(self.config, "7")
