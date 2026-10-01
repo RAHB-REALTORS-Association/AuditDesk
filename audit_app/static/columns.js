@@ -8,12 +8,21 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
     if (Array.isArray(saved)) hidden = new Set(saved.filter((value) => typeof value === 'string'));
   } catch { /* Storage can be unavailable; controls still work for this page. */ }
 
-  const toolbar = document.createElement('div');
-  toolbar.className = 'column-toolbar';
-  const picker = document.createElement('details');
+  const panelHead = table.closest('.panel').querySelector('.panel-head');
+  const actions = document.createElement('div');
+  actions.className = 'panel-head-actions';
+  Array.from(panelHead.children).slice(1).forEach((child) => actions.append(child));
+  const picker = document.createElement('div');
   picker.className = 'column-picker';
-  const summary = document.createElement('summary');
+  picker.id = `columns-${table.dataset.columns}`;
+  picker.setAttribute('popover', 'auto');
+  const summary = document.createElement('button');
+  summary.type = 'button';
+  summary.className = 'column-toggle';
   summary.textContent = 'Columns';
+  summary.setAttribute('popovertarget', picker.id);
+  summary.setAttribute('aria-expanded', 'false');
+  summary.setAttribute('aria-controls', picker.id);
   const choices = document.createElement('div');
   choices.className = 'column-choices';
   const inputs = [];
@@ -48,9 +57,32 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
     apply();
     try { localStorage.removeItem(key); } catch { /* Optional persistence. */ }
   });
-  picker.append(summary, choices, reset);
-  toolbar.append(picker);
-  table.closest('.table-wrap').before(toolbar);
+  picker.append(choices, reset);
+  actions.append(summary);
+  panelHead.append(actions);
+  table.closest('.panel').append(picker);
+
+  function positionPicker() {
+    const anchor = summary.getBoundingClientRect();
+    const width = Math.min(380, window.innerWidth - 32);
+    picker.style.width = `${width}px`;
+    picker.style.left = `${Math.max(16, Math.min(anchor.right - width, window.innerWidth - width - 16))}px`;
+    picker.style.top = `${anchor.bottom + 8}px`;
+    const height = picker.getBoundingClientRect().height;
+    if (anchor.bottom + 8 + height > window.innerHeight - 16) {
+      picker.style.top = `${Math.max(16, anchor.top - height - 8)}px`;
+    }
+  }
+  picker.addEventListener('toggle', (event) => {
+    summary.setAttribute('aria-expanded', String(event.newState === 'open'));
+    if (event.newState === 'open') positionPicker();
+  });
+  window.addEventListener('resize', () => {
+    if (picker.matches(':popover-open')) positionPicker();
+  });
+  window.addEventListener('scroll', () => {
+    if (picker.matches(':popover-open')) positionPicker();
+  }, true);
 
   function apply() {
     const hiddenIndexes = new Set(inputs.filter(({ input }) => !input.checked).map(({ index }) => index));
@@ -67,10 +99,4 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
     table.classList.toggle('has-hidden-columns', hiddenIndexes.size > 0);
   }
   apply();
-  picker.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      picker.open = false;
-      summary.focus();
-    }
-  });
 });

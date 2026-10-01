@@ -28,7 +28,7 @@ Test mode redirects all messages to the configured administrator, and the banner
 
 ## Choose visible columns
 
-Use **Columns** above a list to show or hide columns. Audit history, listings, scheduled runs, daily reports, brokerage statistics, and the activity log each remember their own choices in your browser. The identifying column, audit selection checkboxes, and audit actions stay visible. **Show all columns** restores the default view. Press Escape to close the control.
+Use the **Columns** button at the right of a list header to show or hide columns. Its chooser floats over the list; click outside it or press Escape to close it. Audit history, listings, scheduled runs, daily reports, brokerage statistics, and the activity log each remember their own choices in your browser. The identifying column, audit selection checkboxes, and audit actions stay visible. **Show all columns** restores the default view. Press Escape to close the control.
 
 Hiding columns changes the screen only. Sorting, bulk selection, branch expansion, and CSV/PDF exports still use the underlying records. If browser storage is unavailable, your choices apply until the page is refreshed.
 
