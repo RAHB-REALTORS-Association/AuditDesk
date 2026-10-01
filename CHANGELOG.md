@@ -2,6 +2,7 @@
 
 ## Unreleased — interface polish
 
+- Normalize editor, roster, outcome, and access-form padding; align checkbox controls and stack forms on narrow screens.
 - Align the application shell with Cornerstone Signatures: shared color tokens, system typography, compact navigation, and a separate identity bar.
 
 ## Unreleased — repository organization
