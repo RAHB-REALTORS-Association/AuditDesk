@@ -109,3 +109,13 @@ To prepare a restore, upload an AuditDesk SQLite backup (up to 512 MiB) and choo
 Take a current backup, stop AuditDesk in Coolify, and run the displayed command in a one-off container using the same persistent volume and runtime identity configuration. Restore preserves a pre-restore snapshot and replaces the database atomically. Restart and verify login and record counts. Newer changes are lost when restoring an older backup; check email history before resuming mail. Use a backup supported by the chosen image when rolling back. Recovery is unavailable in disposable development previews.
 
 Selection settings use one form and **Save selection settings** button. Office cooldown applies to the brokerage office; individual broker cooldown follows the broker across offices. All four values are validated and saved together, and apply to future runs.
+
+## Failed-audit Asana follow-up
+
+From a recorded failed audit in Audit history, choose **View follow-up**. **Start Asana follow-up** opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
+
+Use **Review or copy follow-up details → Copy follow-up details** if prefilling fails or the issues are long. Long drafts contain an abbreviated description and link to the full audit; the copy field always includes all recorded issues. If clipboard access is blocked, select and copy the text manually.
+
+Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
+
+The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.

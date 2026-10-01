@@ -79,3 +79,5 @@
 - Keep replacement offline, preserve pre-restore snapshots, restrict recovery to administrators in test/production, and record export requests and restore staging in activity history.
 
 - Consolidate selection percentage, office and individual broker cooldowns, and intake window into one consistently styled form with an atomic Save action.
+
+- Add a manual Asana follow-up handoff for recorded failed audits: prefilled task draft, complete copyable details, and optional saved task link. No API credentials or synchronization. Schema 5 adds the optional task URL while preserving existing data.
