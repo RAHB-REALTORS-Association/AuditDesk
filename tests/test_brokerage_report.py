@@ -22,9 +22,9 @@ class BrokerageReportTests(unittest.TestCase):
 
     def add_listing(self, number, office_id, processed, outcome=None, selected=False, name="Example Realty", office_address=None):
         with connect(self.config.database_path) as db:
-            listing_id = db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
+            listing_id = db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
                 address,brokerage_id,brokerage_name,brokerage_address,first_processed_at,processing_status)
-                VALUES('Cornerstone',?,?,'Active',?,'Example Address',?,?,?,?,'processed_not_selected')""",
+                VALUES('DEMO-MEMBER','Cornerstone',?,?,'Active',?,'Example Address',?,?,?,?,'processed_not_selected')""",
                 (number, number, processed, office_id, name, office_address, processed)).lastrowid
             if selected:
                 db.execute("""INSERT INTO audits(listing_id,selected_at,intended_to,intended_cc,actual_recipients,

@@ -87,3 +87,5 @@
 - Style access-denied, validation, missing-page, and server errors with a consistent standalone AuditDesk page, return action, and request ID. Styling works before authentication without exposing application assets.
 
 - Enforce Cornerstone-only intake using Bridge `OriginatingSystemName`, with local checks before selection and every audit action/delivery. Exclude BRREA, other boards, and unverified records from listings, audit history, and reports. Schema 6 stores board provenance; a no-mail backfill verifies historical records without deleting data.
+
+- Exclude Cornerstone-originated interboard listings identified by `ListAgentMlsId = NONMEM` before contact lookup and audit selection. Apply the same restriction to existing audit actions, delivery retries, lists, counts, and reports. Schema 7 stores the agent MLS identifier; rerun `backfill-listing-boards` after deployment to verify existing data. Missing identifiers remain blocked; missing broker emails alone retain the contact-error workflow.

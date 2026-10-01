@@ -6,7 +6,7 @@ It runs as one Python service with SQLite and a persistent volume. Cloudflare Ac
 
 ## What it does
 
-- Imports only Active listings with `OriginatingSystemName = Cornerstone`; other boards and missing board values cannot be audited
+- Imports only Active listings with `OriginatingSystemName = Cornerstone`; other boards, `NONMEM` agents, and missing board/agent MLS identifiers cannot be audited
 - Selects audits using a configurable lottery, brokerage balancing, and broker/brokerage cooldowns
 - Sends audit requests and failed-audit notices, with delivery history and controlled retries
 - Assigns reviewers and tracks work from not started to completed

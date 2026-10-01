@@ -28,6 +28,6 @@ class AsanaTests(unittest.TestCase):
                 db.execute('PRAGMA user_version=4'); db.commit()
             init_db(path); init_db(path)
             with connect(path) as db:
-                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
+                self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
                 self.assertIn('asana_task_url',{row['name'] for row in db.execute('PRAGMA table_info(audits)')})
                 self.assertEqual(db.execute('SELECT rate_percent FROM selection_settings').fetchone()[0],'7')

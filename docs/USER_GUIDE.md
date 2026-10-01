@@ -120,8 +120,8 @@ Choose **Link task / copy details** in Audit history to open the follow-up page.
 
 The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.
 
-## Cornerstone board boundary
+## Cornerstone audit eligibility
 
-AuditDesk only imports and displays listings whose Bridge `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership.
+AuditDesk only imports and displays listings whose Bridge `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership. Cornerstone-originated interboard listings can still belong to nonmember agents: listings whose Bridge `ListAgentMlsId` is `NONMEM` are excluded before broker/contact lookup, selection, and email. A missing broker email alone does not establish interboard status; eligible member listings retain the contact-error workflow.
 
-Older databases did not store this field. Those records are retained but hidden from listing/audit views and reports until IT verifies their board using `backfill-listing-boards`. An unverified or other-board listing cannot be assigned, have a result recorded, send/retry audit mail, or start an Asana follow-up. A notice identifies how many records await verification. Existing recorded history is not deleted.
+Older databases did not store the board or agent MLS identifier. Those records are retained but hidden from listing/audit views and reports until IT verifies their board and agent MLS identifier using `backfill-listing-boards`. An unverified, nonmember, or other-board listing cannot be assigned, have a result recorded, send/retry audit mail, or start an Asana follow-up. A notice identifies how many records await verification. Existing recorded history is not deleted.
