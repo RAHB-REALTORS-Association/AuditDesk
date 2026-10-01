@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 
+from .board_scope import is_eligible_listing
+
+
 LOG = logging.getLogger(__name__)
 
 
@@ -134,7 +137,7 @@ class BridgeClient:
         start_text = start.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         end_text = end.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         params = {
-            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
+            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {fields['agent_mls_id']} ne 'NONMEM' and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
             "$select": ",".join(dict.fromkeys(fields.values())),
             "$top": 200,
             "$orderby": fields["entry_timestamp"] + " asc",
@@ -145,6 +148,9 @@ class BridgeClient:
             if not isinstance(board, str) or board.strip() != 'Cornerstone':
                 continue
             listing['originating_system_name'] = board.strip()
+            if not is_eligible_listing(listing):
+                continue
+            listing['agent_mls_id'] = listing['agent_mls_id'].strip()
             if not listing["listing_id"] or not listing["entry_timestamp"]:
                 raise BridgeError("A Bridge listing is missing its ID or entry timestamp")
             entered = datetime.fromisoformat(str(listing["entry_timestamp"]).replace("Z", "+00:00"))

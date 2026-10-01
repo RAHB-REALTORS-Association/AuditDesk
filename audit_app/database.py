@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS listings (
   broker_email TEXT,
   first_processed_at TEXT NOT NULL,
   processing_status TEXT NOT NULL,
-  originating_system_name TEXT
+  originating_system_name TEXT,
+  agent_mls_id TEXT
 );
 CREATE TABLE IF NOT EXISTS audits (
   id INTEGER PRIMARY KEY,
@@ -159,6 +160,8 @@ def init_db(path, *, check_revision=True):
             db.execute("ALTER TABLE listings ADD COLUMN brokerage_address TEXT")
         if "originating_system_name" not in columns:
             db.execute("ALTER TABLE listings ADD COLUMN originating_system_name TEXT")
+        if "agent_mls_id" not in columns:
+            db.execute("ALTER TABLE listings ADD COLUMN agent_mls_id TEXT")
         template_columns = {row["name"] for row in db.execute("PRAGMA table_info(email_template)")}
         if "body_format" not in template_columns:
             db.execute("ALTER TABLE email_template ADD COLUMN body_format TEXT NOT NULL DEFAULT 'plain'")

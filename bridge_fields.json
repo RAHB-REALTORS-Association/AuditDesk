@@ -10,7 +10,8 @@
     "agent_email": "ListAgentEmail",
     "office_id": "ListOfficeKey",
     "office_name": "ListOfficeName",
-    "originating_system_name": "OriginatingSystemName"
+    "originating_system_name": "OriginatingSystemName",
+    "agent_mls_id": "ListAgentMlsId"
   },
   "Member": {
     "key": "MemberKey",

@@ -18,8 +18,8 @@ class AssignmentTests(unittest.TestCase):
         self.config = replace(load_config(), env="test", database_path=str(Path(self.temp.name) / "audit.sqlite3"))
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
-            listing_id = db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,address,first_processed_at,processing_status)
-                VALUES('Cornerstone','demo','DEMO-1','Active','2026-09-25T12:00:00+00:00','1 Example Road','2026-09-25T12:00:00+00:00','email_sent')""").lastrowid
+            listing_id = db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,address,first_processed_at,processing_status)
+                VALUES('DEMO-MEMBER','Cornerstone','demo','DEMO-1','Active','2026-09-25T12:00:00+00:00','1 Example Road','2026-09-25T12:00:00+00:00','email_sent')""").lastrowid
             db.execute("""INSERT INTO audits(listing_id,selected_at,intended_to,intended_cc,actual_recipients,test_mode,email_status,selection_metadata)
                 VALUES(?,'2026-09-25T12:00:00+00:00','[]','[]','[]',1,'email_sent','{}')""", (listing_id,))
             db.commit()

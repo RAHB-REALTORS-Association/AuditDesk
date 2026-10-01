@@ -33,7 +33,7 @@ def brokerage_statistics(config, period="3m", today=None):
 
     with connect(config.database_path) as db:
         records = db.execute("""SELECT l.brokerage_id, l.brokerage_name, l.brokerage_address, l.first_processed_at,
-            a.id AS audit_id, a.outcome FROM listings l LEFT JOIN audits a ON a.listing_id=l.id WHERE l.originating_system_name='Cornerstone'
+            a.id AS audit_id, a.outcome FROM listings l LEFT JOIN audits a ON a.listing_id=l.id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM'
             ORDER BY l.first_processed_at""")
         for record in records:
             day = _local_day(record["first_processed_at"], zone)

@@ -107,9 +107,9 @@ class FoundationTests(unittest.TestCase):
         stamp = datetime.now(timezone.utc).isoformat()
         with connect(self.config.database_path) as db:
             for number in range(50):
-                db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
+                db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
                     address,brokerage_id,brokerage_name,brokerage_address,first_processed_at,processing_status)
-                    VALUES('Cornerstone',?,?,'Active',?,'Example',?,'Example Realty',?,?,'processed_not_selected')""",
+                    VALUES('DEMO-MEMBER','Cornerstone',?,?,'Active',?,'Example',?,'Example Realty',?,?,'processed_not_selected')""",
                     (str(number),str(number),stamp,f"office-{number}",f"{number} Example Street, Hamilton ON",stamp))
             db.commit()
         for period in ('3m', '6m', '1y'):
@@ -138,9 +138,9 @@ class FoundationTests(unittest.TestCase):
     def test_bulk_assignment_validates_batch_and_records_each_actor(self):
         with connect(self.config.database_path) as db:
             for number in (1, 2, 3):
-                db.execute("""INSERT INTO listings(originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
+                db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
                     address,first_processed_at,processing_status)
-                    VALUES('Cornerstone',?,?,?,'Active','2026','Example','2026','selected_for_audit')""", (number,str(number),str(number)))
+                    VALUES('DEMO-MEMBER','Cornerstone',?,?,?,'Active','2026','Example','2026','selected_for_audit')""", (number,str(number),str(number)))
                 db.execute("""INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,
                     actual_recipients,test_mode,email_status,selection_metadata)
                     VALUES(?,?,'2026','[]','[]','[]',1,'email_sent','{}')""", (number,number))
@@ -290,8 +290,8 @@ class FoundationTests(unittest.TestCase):
     def test_lists_page_filter_and_sort_the_full_history(self):
         with connect(self.config.database_path) as db:
             for number in range(205):
-                db.execute("""INSERT INTO listings(originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
-                    address,first_processed_at,processing_status) VALUES('Cornerstone',?,?,'Active',?,'Example',?,?)""",
+                db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status) VALUES('DEMO-MEMBER','Cornerstone',?,?,'Active',?,'Example',?,?)""",
                     (str(number),f'PAGE-{number:03}',NOW.isoformat(),NOW.isoformat(),
                      'email_failed' if number % 2 else 'processed_not_selected'))
             db.commit()
@@ -326,9 +326,9 @@ class FoundationTests(unittest.TestCase):
     def seed_asana_audits(self):
         with connect(self.config.database_path) as db:
             for number, outcome in ((1,'failed'),(2,'passed'),(3,None)):
-                db.execute("""INSERT INTO listings(originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
+                db.execute("""INSERT INTO listings(agent_mls_id,originating_system_name,id,bridge_listing_id,mls_number,status,entry_timestamp,
                     address,first_processed_at,processing_status)
-                    VALUES('Cornerstone',?,?,?,'Active','2026-10-01T12:00:00+00:00','Example & Main','2026-10-01T12:00:00+00:00','selected_for_audit')""", (number,str(number),str(number)))
+                    VALUES('DEMO-MEMBER','Cornerstone',?,?,?,'Active','2026-10-01T12:00:00+00:00','Example & Main','2026-10-01T12:00:00+00:00','selected_for_audit')""", (number,str(number),str(number)))
                 db.execute("""INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,
                     actual_recipients,test_mode,email_status,selection_metadata,outcome,issues)
                     VALUES(?,?,'2026-10-01T12:00:00+00:00','[]','[]','[]',1,'email_sent','{}',?,?)""", (number,number,outcome,'Missing document <check> & details'))
@@ -371,7 +371,33 @@ class FoundationTests(unittest.TestCase):
             page=self.get('/?tab='+tab).text
             self.assertNotIn('FOREIGN-MARKER',page)
             self.assertNotIn('UNKNOWN-MARKER',page)
-            self.assertIn('Records awaiting board verification',page)
+            self.assertIn('Records awaiting eligibility verification',page)
+        self.assertEqual(brokerage_statistics(self.config)['total'],1)
+        sender=Mock()
+        for number in (2,3):
+            self.assertEqual(self.get(f'/?tab=outcome&id={number}').status_code,400)
+            self.assertEqual(self.post(f'/outcome/{number}',{'outcome':'failed','action':'preview','issues':'Missing form'}).status_code,400)
+            self.assertEqual(self.post(f'/outcome/{number}/asana',{'asana_task_url':'https://app.asana.com/0/1/2'}).status_code,400)
+            self.assertEqual(self.post(f'/assignment/{number}',{'assignee_user_id':'2'}).status_code,400)
+            self.assertFalse(deliver_audit(self.config,number,sender=sender))
+            self.assertFalse(deliver_failure_notice(self.config,number,sender=sender))
+        sender.assert_not_called()
+
+    def test_nonmember_and_unknown_membership_audits_are_hidden_and_cannot_be_acted_on(self):
+        from audit_app.job import deliver_audit
+        from audit_app.outcomes import deliver_failure_notice
+        from audit_app.brokerage_report import brokerage_statistics
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET agent_mls_id=' nonmem ',mls_number='FOREIGN-MARKER' WHERE id=2")
+            db.execute("UPDATE listings SET agent_mls_id=NULL,mls_number='UNKNOWN-MARKER' WHERE id=3")
+            db.execute("UPDATE audits SET outcome='failed',issues='Missing form',email_status='email_pending',failure_email_status='email_pending' WHERE id IN (2,3)")
+            db.commit()
+        for tab in ('audits','listings'):
+            page=self.get('/?tab='+tab).text
+            self.assertNotIn('FOREIGN-MARKER',page)
+            self.assertNotIn('UNKNOWN-MARKER',page)
+            self.assertIn('Records awaiting eligibility verification',page)
         self.assertEqual(brokerage_statistics(self.config)['total'],1)
         sender=Mock()
         for number in (2,3):
@@ -449,12 +475,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-6.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-7.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),6)
+        self.assertEqual(validate(snapshot),7)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -486,7 +512,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),6)
+        self.assertEqual(validate(file),7)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -511,7 +537,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],6)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)
