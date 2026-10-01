@@ -23,7 +23,7 @@ def asana_handoff(config, data):
         <p class="form-help">If the prefilled draft is incomplete, paste these full details into Asana.</p></details>
         <form method="post" action="/outcome/{data['id']}/asana" class="asana-link-form">
         <input type="hidden" name="token" value="{retry_token(config, 'asana')}">
-        <label for="asana-task-url">Asana task link (optional)<input id="asana-task-url" type="url" name="asana_task_url" maxlength="2048" placeholder="https://app.asana.com/…" value="{esc(saved)}"></label>
+        <label for="asana-task-url">Asana task link (optional)<input id="asana-task-url" type="url" name="asana_task_url" maxlength="2048" placeholder="https://app.asana.com/…" value="{html.escape(saved, quote=True)}"></label>
         <button type="submit">Save task link</button><p class="form-help">Paste the link after creating the task. Clear it and save to remove the link.</p></form></section>'''
 
 

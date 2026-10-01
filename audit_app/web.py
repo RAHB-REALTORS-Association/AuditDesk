@@ -101,7 +101,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Failed-audit email", "Edit the notice sent when an audit is marked failed."
         content = template_editor(config, form_values, error, "failure")
     elif tab == "outcome":
-        title, subtitle = "Record audit result", "Mark this audit passed, or describe issues and review its failure notice."
+        title, subtitle = "Audit result and follow-up", "Record the result, review issues, and manage failed-audit follow-up."
         content = outcome_view(config, audit_id, form_values or "", error, preview_outcome)
     elif tab in {"admin", "manage"}:
         title, subtitle = "Manage", "Selection settings, email wording, and application access."

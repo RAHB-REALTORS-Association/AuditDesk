@@ -320,6 +320,7 @@ class FoundationTests(unittest.TestCase):
         page=self.get('/?tab=outcome&id=1',role='reviewer').text
         self.assertIn('Start Asana follow-up',page)
         self.assertIn('Copy follow-up details',page)
+        self.assertRegex(page, r'id="asana-task-url"[^>]*value=""')
         self.assertIn('View follow-up',self.get().text)
         draft=unescape(re.search(r'href="(https://app.asana.com/0/-/create_task[^"]+)"',page)[1])
         query=parse_qs(urlsplit(draft).query)
