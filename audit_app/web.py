@@ -11,12 +11,12 @@ from .views.common import badge, esc, local_time, recipients, retry_token, sort_
 from .views.emails import template_editor
 from .views.management import activity_view, admin_view, users_view
 from .views.reports import brokerage_view, report_view
-from .views.workflow import outcome_view, simulation_view
+from .views.workflow import outcome_view
 
 
 TAB_CAPABILITIES = {
     "audits": "audits.read", "listings": "audits.read", "runs": "audits.read",
-    "simulation": "audits.read", "outcome": "audits.result",
+    "outcome": "audits.result",
     "admin": "settings.manage", "template": "templates.manage", "failure_template": "templates.manage",
     "report": "reports.read", "brokerages": "reports.read", "users": "users.manage", "activity": "activity.read",
 }
@@ -42,7 +42,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         listings = db.execute("SELECT * FROM listings ORDER BY first_processed_at DESC LIMIT 200").fetchall()
         runs = db.execute("SELECT * FROM runs ORDER BY started_at DESC LIMIT 50").fetchall()
         previous = {row["id"]: db.execute("SELECT count(*) FROM audits WHERE brokerage_id=? AND selected_at<?", (row["brokerage_id"], row["selected_at"])).fetchone()[0] if row["brokerage_id"] else 0 for row in audits}
-    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs"), ("simulation", "Simulation")))
+    nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
     admin_nav = "".join(f'<a class="nav-item {"active" if tab == name else ""}" href="/?tab={name}">{label}</a>' for name, label in (("admin", "Selection settings"), ("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("template", "Audit request email"), ("failure_template", "Failed-audit email"), ("users", "Access management"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
@@ -64,9 +64,6 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     elif tab == "activity":
         title, subtitle = "Activity log", "Recorded changes and the authenticated person or system responsible."
         content = activity_view(config)
-    elif tab == "simulation":
-        title, subtitle = "Simulation", "Watch a complete audit cycle using synthetic listing data."
-        content = simulation_view(config)
     elif tab == "template":
         title, subtitle = "Email template", "Edit the audit request and preview merge tags before saving."
         content = template_editor(config, form_values, error)
@@ -129,7 +126,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
             rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{previous[r["id"]]}">{previous[r["id"]]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "simulation", "admin", "report", "brokerages", "users", "activity"}:
+    if tab not in {"template", "failure_template", "outcome", "admin", "report", "brokerages", "users", "activity"}:
         if not rows:
             rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No {"audits" if tab == "audits" else "records"} yet. The daily job will populate this view.</td></tr>'
         bulk = ""

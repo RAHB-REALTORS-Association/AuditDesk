@@ -1,28 +1,10 @@
-"""Audit outcomes and the isolated synthetic simulation."""
+"""Audit result forms and failed-notice previews."""
 import html
 
 from ..database import connect
 from ..emailer import EmailError, resolve_recipients
-from ..simulation import simulate_cycle
 from ..templates import current_failure_templates, format_message_parts
 from .common import badge, esc, local_time, retry_token
-
-
-def simulation_view(config):
-    result = simulate_cycle(config)
-    steps = [
-        ("01", "Bridge intake", f'{result["bridge_rows"]} synthetic source listings; {result["server_filtered_rows"]} Active and within 24 hours.', "DEMO-OLD and DEMO-INACTIVE were excluded."),
-        ("02", "Selection", f'{result["first_run"]["new"]} new listings entered the 5% draw; {result["first_run"]["selected"]} was selected.', "A recent audit cooled down office-a, so DEMO-B was chosen."),
-        ("03", "Audit record", f'One audit was recorded for {result["selected_listing"]} before any send attempt.', "The audit ID remained the same through the retry."),
-        ("04", "Recipient routing", f'Intended To: {", ".join(result["intended_to"])}', f'Intended CC: {", ".join(result["intended_cc"])} · Actual: {", ".join(result["actual_recipients"])}'),
-        ("05", "Simulated delivery", "First attempt: HTTP 503 → email_failed.", "Manual retry: email_sent after two recorded attempts."),
-        ("06", "Duplicate check", f'Second daily run: {result["second_run"]["new"]} new listings, {result["second_run"]["selected"]} new audits.', "No second audit or email was created."),
-    ]
-    cards = "".join(f'<div class="sim-step"><span class="sim-index">{number}</span><div><h3>{esc(title)}</h3><strong>{esc(main)}</strong><p>{esc(detail)}</p></div></div>' for number, title, main, detail in steps)
-    return f'''<div class="sim-alert"><strong>SIMULATION ONLY</strong><span>All listing names and addresses are synthetic. This demonstration uses an isolated temporary database and makes no Bridge or SendGrid network calls.</span></div>
-    <div class="sim-summary"><div><span>Source rows</span><strong>{result["bridge_rows"]}</strong></div><div><span>Eligible</span><strong>{result["server_filtered_rows"]}</strong></div><div><span>Audits created</span><strong>{result["audit_records_for_new_listings"]}</strong></div><div><span>Final status</span><strong>{esc(result["final_email_status"].replace("_", " ").title())}</strong></div></div>
-    <section class="panel"><div class="panel-head"><div><h2>Complete operation cycle</h2><p>Including a failed send, manual retry, and duplicate-run check</p></div></div><div class="sim-flow">{cards}</div></section>'''
-
 
 
 def outcome_view(config, audit_id, issues="", error="", preview=False):

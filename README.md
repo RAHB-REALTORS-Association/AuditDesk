@@ -59,7 +59,7 @@ python main.py serve
 
 Open [http://127.0.0.1:8765](http://127.0.0.1:8765). On Windows, activate with `.venv\Scripts\Activate.ps1`, or use Docker.
 
-Development opens as a demo administrator with four synthetic audits. It ignores integration credentials and live storage settings, blocks real intake and mail, and resets its temporary database on every startup. Use **Simulation** in the sidebar, or `python main.py simulate`, to demonstrate selection, delivery failure, duplicate prevention, and retry without external calls.
+Development opens as a demo administrator with four synthetic audits. It ignores integration credentials and live storage settings, blocks real intake and mail, and resets its temporary database on every startup. Developer verification commands and isolated workflow fixtures are documented in [Contributing](CONTRIBUTING.md).
 
 `python -m audit_app` provides the same commands as `python main.py`. See [Contributing](CONTRIBUTING.md) for verification and the command reference.
 

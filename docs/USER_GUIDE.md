@@ -24,7 +24,7 @@ A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX bann
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
 5. Use daily and brokerage reports for the app's intake history. Missing intake is not a zero day, and rates exclude pending results where appropriate. PDF export reflects the selected period.
 
-Test mode redirects all messages to the configured administrator, and the banner shows that mode. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it. Simulation uses synthetic data without real messages or intake.
+Test mode redirects all messages to the configured administrator, and the banner shows that mode. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
 
 ## Manager controls
 
@@ -83,8 +83,3 @@ Open **Admin → Daily audit report** for the past 90 local calendar days. It sh
 ## Review brokerage statistics
 
 Open **Admin → Brokerage statistics** to compare brokerages for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the brokerage has a completed audit. Branches with the same brokerage name (ignoring capitalization and extra spaces) are combined into one row, with their counts and rates calculated together. Select **View branches** to see each office's Bridge profile address and its own counts and rates; brokerage rows remain grouped while sorting. Listings without a brokerage name retain their Bridge office ID as a separate group. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period, including all branch addresses. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. PDF support is included in the locked runtime dependencies. If export is unavailable, ask IT to verify the deployed environment.
-
-
-## Simulate a full cycle
-
-Open **Simulation** in the staff sidebar, or run `python main.py simulate` from the repository root with the project environment activated. This uses synthetic listings and a temporary database. It demonstrates the 24-hour and Active filters, brokerage cooldown, audit creation, test-mode recipient substitution, a simulated SendGrid failure, idempotent second run, and successful manual retry. It does not call Bridge or SendGrid and does not change the real audit history.

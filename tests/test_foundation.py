@@ -137,6 +137,11 @@ class FoundationTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT assignee_user_id FROM audits').fetchone()[0],2)
 
+    def test_simulation_is_not_a_staff_page(self):
+        for role in ('reviewer', 'manager', 'admin'):
+            self.assertNotIn('Simulation', self.get(role=role).text)
+            self.assertEqual(self.get('/?tab=simulation', role=role).status_code, 404)
+
     def test_removed_roster_routes_are_not_available(self):
         for role in ('reviewer', 'manager', 'admin'):
             self.assertEqual(self.get('/?tab=reviewers', role=role).status_code, 404)

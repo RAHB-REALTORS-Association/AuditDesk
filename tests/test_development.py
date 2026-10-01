@@ -20,7 +20,7 @@ class DevelopmentTests(unittest.TestCase):
     def test_all_staff_views_and_email_editor_asset_are_available(self):
         app = self.app()
         client = app.test_client()
-        for tab in ('audits', 'listings', 'runs', 'simulation', 'admin',
+        for tab in ('audits', 'listings', 'runs', 'admin',
                     'template', 'failure_template', 'report', 'brokerages', 'users', 'activity'):
             with self.subTest(tab=tab):
                 response = client.get('/?tab=' + tab)

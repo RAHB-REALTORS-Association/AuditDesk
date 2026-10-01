@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — remove the staff simulation page
+
+- Remove Simulation from staff navigation, tab routing, and presentation styles.
+- Keep isolated fixtures and the command-line simulation for developer verification.
+
 ## Unreleased — account assignments and bulk operations
 
 - Remove the Audit team page, roster routes, and roster-only controls; active account roles determine assignment eligibility.

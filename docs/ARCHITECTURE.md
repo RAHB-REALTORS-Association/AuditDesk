@@ -13,7 +13,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/runtime.py` | Service lock, interrupted-work recovery, optional scheduler, local HTTP startup |
 | `audit_app/web.py` | Page composition, navigation, tab capability map, history queries, and form revisions |
 | `audit_app/views/common.py` | Escaping, local time, status badges, sort headings, recipients, and CSRF form tokens |
-| `audit_app/views/workflow.py` | Outcome forms and isolated simulation presentation |
+| `audit_app/views/workflow.py` | Audit result forms and failed-notice previews |
 | `audit_app/views/management.py` | Selection settings, access management, and activity views |
 | `audit_app/views/emails.py` | Email template editor and rendered previews |
 | `audit_app/views/reports.py` | Daily and brokerage HTML reports |
@@ -37,7 +37,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
 | `backup.py` | Consistent online backup and validated offline restore |
 | `office_backfill.py` | Address maintenance for older imported records |
-| `development.py`, `simulation.py` | Synthetic preview fixtures and isolated workflow demonstration |
+| `development.py`, `simulation.py` | Synthetic preview fixtures and isolated developer/CLI verification |
 
 Keep domain changes in their existing modules; avoid adding another service or moving everything into generic utility folders. Integrations receive configuration explicitly and must retain their development-mode guards.
 
