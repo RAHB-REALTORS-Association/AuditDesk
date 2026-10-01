@@ -2,7 +2,7 @@
 
 Feature-specific HTML belongs in views/. Request handling belongs in application.py.
 """
-from flask import g, has_request_context
+from flask import g, has_request_context, request
 import re
 
 from .assignment import can_audit, eligible_assignees
@@ -13,6 +13,7 @@ from .views.common import badge, esc, local_time, recipients, retry_token, sort_
 from .views.emails import template_editor
 from .views.management import activity_view, admin_view, users_view
 from .views.reports import brokerage_view, report_view
+from .views.recovery import recovery_view
 from .views.workflow import outcome_view
 
 
@@ -20,7 +21,7 @@ TAB_CAPABILITIES = {
     "audits": "audits.read", "listings": "audits.read", "runs": "audits.read",
     "outcome": "audits.result",
     "admin": "settings.manage", "manage": "settings.manage", "template": "templates.manage", "failure_template": "templates.manage",
-    "report": "reports.read", "brokerages": "reports.read", "users": "users.manage", "activity": "activity.read",
+    "report": "reports.read", "brokerages": "reports.read", "users": "users.manage", "activity": "activity.read", "recovery": "backups.manage",
 }
 
 
@@ -68,8 +69,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 {'Started':'started_at','Status':'display_status','Fetched':'fetched_count','New':'new_count',
                  'Selected':'selected_count','Error':'error'}, 'started_at')
 
-    nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
-    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("manage", "Manage"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
+    nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users", "recovery"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
+    admin_nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users", "recovery"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("manage", "Manage"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
         if config.test_end_at:
@@ -87,6 +88,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
     if tab == "users":
         title, subtitle = "Access management", "Application roles for individually authenticated people."
         content = users_view(config)
+    elif tab == "recovery":
+        title, subtitle = "Backup and restore", "Download a backup and prepare a validated restore."
+        content = recovery_view(config, request.args.get('restore', '') if has_request_context() else '')
     elif tab == "activity":
         title, subtitle = "Activity log", "Recorded changes and the authenticated person or system responsible."
         content = activity_view(config)
@@ -159,7 +163,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
             rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
         title, subtitle = "Audit history", "Selection, recipient routing, and email delivery in one place."
-    if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity"}:
+    if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery"}:
         if not rows:
             rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
         bulk = ""
@@ -169,9 +173,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 for person in reviewers)
             bulk = f'<form id="bulk-assignment" data-owner="{esc(g.principal.subject) if has_request_context() else "local"}" method="post" action="/assignments" class="bulk-assignment"><input type="hidden" name="token" value="{retry_token(config, "assignments")}"><span data-selection-count aria-live="polite">0 selected</span><label>Assign selected to <select name="assignee_user_id" required>{bulk_options}</select></label><button type="submit" class="primary-button" disabled>Apply to selected</button><button type="button" data-clear-selection disabled>Clear selection</button></form>'
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>{list_page.total:,} matching records · Sort by a column heading</p></div><span class="live-dot">● &nbsp; Current data</span></div>{list_page.filters()}{bulk}<div class="table-wrap"><table data-server-list data-columns="{tab}" class="{"history-table" if tab == "audits" else "listing-table" if tab == "listings" else "runs-table"}"{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div>{list_page.footer()}</section>'
-    if tab in {'admin', 'manage', 'template', 'failure_template', 'users'}:
+    if tab in {'admin', 'manage', 'template', 'failure_template', 'users', 'recovery'}:
         sections = (('manage', 'Selection', 'settings.manage'), ('template', 'Audit request email', 'templates.manage'),
-                    ('failure_template', 'Failed-audit email', 'templates.manage'), ('users', 'Access', 'users.manage'))
+                    ('failure_template', 'Failed-audit email', 'templates.manage'), ('users', 'Access', 'users.manage'), ('recovery', 'Recovery', 'backups.manage'))
         links = ''
         for name, label, capability in sections:
             if allowed(capability):

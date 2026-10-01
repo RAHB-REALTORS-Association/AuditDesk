@@ -1,4 +1,5 @@
 import re
+import io
 import sqlite3
 import subprocess
 import tempfile
@@ -316,6 +317,41 @@ class FoundationTests(unittest.TestCase):
             self.assertEqual((row['broker_cooldown_days'],row['window_hours']),(7,48))
             self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='settings.workflow_updated'").fetchone()[0],'manager')
 
+    def test_recovery_download_upload_and_permission_guards(self):
+        for role in ('reviewer','manager'):
+            self.assertEqual(self.get('/?tab=recovery',role=role).status_code,403)
+            self.assertEqual(self.post('/manage/backup',{},role=role).status_code,403)
+        download=self.post('/manage/backup',{},page='/?tab=recovery')
+        self.assertEqual(download.status_code,200,download.data[:100])
+        self.assertEqual(download.mimetype,'application/octet-stream')
+        self.assertIn('schema-4.sqlite3',download.headers['Content-Disposition'])
+        self.assertEqual(download.headers['Cache-Control'],'no-store')
+        snapshot=Path(self.temp.name)/'download.sqlite3'
+        snapshot.write_bytes(download.data)
+        download.close()
+        self.assertEqual(validate(snapshot),4)
+        def upload(value, role='admin', token=None):
+            self.get('/?tab=recovery',role=role)
+            with self.client.session_transaction(base_url=self.config.public_url) as session:
+                csrf=session['csrf']
+            with connect(self.config.database_path) as db:
+                revision=db.execute('SELECT COALESCE(max(id),0) FROM activity_events').fetchone()[0]
+            return self.client.post('/manage/restore', data={'backup':(io.BytesIO(value),'../../evil.sqlite3'),
+                'token':csrf if token is None else token,'revision':str(revision)}, base_url=self.config.public_url,
+                headers={'Cf-Access-Jwt-Assertion':self.token(role),'Origin':self.config.public_url})
+        self.assertEqual(upload(snapshot.read_bytes(),role='manager').status_code,403)
+        self.assertEqual(upload(snapshot.read_bytes(),token='bad').status_code,403)
+        self.assertEqual(upload(b'corrupt').status_code,400)
+        response=upload(snapshot.read_bytes())
+        self.assertEqual(response.status_code,303,response.text)
+        page=self.get(response.headers['Location']).text
+        self.assertIn('Validated restore file',page)
+        self.assertIn('RESTORE STOPPED AUDITDESK',page)
+        self.assertIn('SHA-256',page)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='backup.restore_staged'").fetchone()[0],'admin')
+        self.assertEqual(self.get('/?tab=recovery&restore=../../live').status_code,400)
+
     def test_intake_catches_up_from_last_success(self):
         run_job(self.config,FakeClient([]),now=NOW,sender=Mock())
         client=Mock();client.active_new_listings.return_value=[]
@@ -337,7 +373,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(Path(restore(self.config,file,'RESTORE STOPPED AUDITDESK')),Path(self.config.database_path).resolve())
         self.assertTrue(list(Path(self.temp.name).glob('*.before-restore-*')))
         bad=Path(self.temp.name)/'bad.sqlite3';bad.write_bytes(b'not a database')
-        with self.assertRaises(sqlite3.DatabaseError):validate(bad)
+        with self.assertRaises(ValueError):validate(bad)
 
     def test_migrate_original_schema_and_preserve_data(self):
         # Exact baseline schema, not a synthetic facsimile of the current migration.

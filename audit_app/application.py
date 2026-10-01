@@ -10,7 +10,7 @@ import threading
 import time
 import tempfile
 from collections import defaultdict, deque
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from flask import Flask, Response, abort, g, redirect, request, session
@@ -18,12 +18,13 @@ from werkzeug.exceptions import HTTPException
 
 from . import web
 from .assignment import assign_audits, assign_reviewer
+from .backup import MAX_BACKUP_BYTES, backup, stage_restore
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .outcomes import deliver_failure_notice, record_outcome
-from .security import AccessVerifier, authenticate, check_csrf, require, save_user, seed_admins
+from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, seed_admins
 from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings
 from .templates import save_templates, save_failure_templates, validate_templates
 
@@ -75,6 +76,18 @@ def create_app(config=None, verifier=None):
             return
         authenticate(config, verifier)
         session.permanent = True
+        recovery_upload = request.path == '/manage/restore' and request.method == 'POST'
+        if request.path in {'/manage/backup', '/manage/restore'}:
+            if not allowed('backups.manage'):
+                abort(403, 'Only IT administrators can manage backups and restores.')
+            if config.env == 'development':
+                abort(400, 'Backup and restore are unavailable in the disposable development sandbox.')
+        if recovery_upload:
+            request.max_content_length = MAX_BACKUP_BYTES + 1024 * 1024
+            # Multipart parsing needs room for its 64 KiB read buffer. File
+            # content is spooled to disk; ordinary mutation limits stay small.
+            request.max_form_memory_size = 256 * 1024
+            request.max_form_parts = 3
         # Rate limit by verified subject, never untrusted forwarding headers.
         if request.method == "POST" or request.path.endswith((".pdf", ".csv")):
             with limit_lock:
@@ -89,7 +102,7 @@ def create_app(config=None, verifier=None):
                     abort(429, "Too many actions. Wait a minute and try again.")
                 bucket.append(now)
         if request.method == "POST":
-            if request.mimetype != "application/x-www-form-urlencoded":
+            if request.mimetype != ('multipart/form-data' if recovery_upload else "application/x-www-form-urlencoded"):
                 abort(415, "Use an application form to submit changes.")
             if any(len(values) != 1 for key, values in request.form.lists()
                    if not (request.path == "/assignments" and key == "audit_ids")):
@@ -150,9 +163,42 @@ def create_app(config=None, verifier=None):
             return web.render(config, tab, notice=request.args.get("notice", ""), audit_id=int(audit_id) if tab == "outcome" else None, period=period)
         return page()
 
-    def done(tab, notice):
+    def done(tab, notice, **values):
         from urllib.parse import urlencode
-        return redirect("/?" + urlencode({"tab": tab, "notice": notice}), code=303)
+        return redirect("/?" + urlencode({"tab": tab, "notice": notice, **values}), code=303)
+
+    @app.post('/manage/backup')
+    @require('backups.manage')
+    def backup_download():
+        temporary = tempfile.TemporaryDirectory(prefix='auditdesk-download-')
+        path = Path(temporary.name) / 'backup.sqlite3'
+        try:
+            with connect(config.database_path) as db:
+                event(db, 'backup.export_requested', 'database', f'schema {SCHEMA_VERSION}')
+                db.commit()
+            backup(config, path)
+        except Exception:
+            temporary.cleanup()
+            raise
+        def chunks():
+            try:
+                with path.open('rb') as source:
+                    while chunk := source.read(1024 * 1024):
+                        yield chunk
+            finally:
+                temporary.cleanup()
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        return Response(chunks(), mimetype='application/octet-stream', headers={
+            'Content-Disposition': f'attachment; filename="auditdesk-{stamp}-schema-{SCHEMA_VERSION}.sqlite3"',
+            'Content-Length': str(path.stat().st_size)})
+
+    @app.post('/manage/restore')
+    @require('backups.manage')
+    def restore_upload():
+        if set(request.files) != {'backup'} or len(request.files.getlist('backup')) != 1:
+            abort(400, 'Choose exactly one AuditDesk backup file.')
+        identifier = stage_restore(config, request.files['backup'].stream)
+        return done('recovery', 'Backup validated and staged. The live database has not been replaced.', restore=identifier)
 
     @app.post("/admin/selection-rate")
     @require("settings.manage")
