@@ -30,7 +30,7 @@ Both `python main.py COMMAND` and `python -m audit_app COMMAND` are supported. R
 | `simulate` | Demonstrate the complete audit cycle | Temporary synthetic data, no Bridge or SendGrid calls |
 | `run` | Run intake and selection | Development simulates; test/production queries Bridge and may send enabled mail |
 | `inspect-bridge` | Validate the field map against Bridge metadata | Live Bridge reads; unavailable in development |
-| `backfill-listing-boards` | Verify historical listing boards without selecting audits or sending email | Bridge reads and local board/activity updates; unavailable in development |
+| `backfill-listing-boards` | Verify historical listing boards and agent MLS identifiers without selecting audits or sending email | Bridge reads and local provenance/activity updates; unavailable in development |
 | `backfill-office-addresses` | Fill older listing office addresses | Live Bridge reads and local address updates; unavailable in development |
 | `backup --output PATH` | Create a consistent database backup | New sensitive backup file; unavailable in development |
 | `restore --input PATH --confirm 'RESTORE STOPPED AUDITDESK'` | Restore a stopped service | Replaces database state; follow the deployment guide |
