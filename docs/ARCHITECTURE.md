@@ -38,7 +38,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
-| `backup.py` | Consistent online backup and validated offline restore |
+| `backup.py` | Consistent online backup, bounded restore staging, and validated offline restore |
 | `office_backfill.py` | Address maintenance for older imported records |
 | `development.py`, `simulation.py` | Synthetic preview fixtures and isolated developer/CLI verification |
 
@@ -71,7 +71,7 @@ The scheduler checks every five minutes after 08:00 in `APP_TIMEZONE`. Completed
 
 Test/production require signed Access identity with the configured issuer/audience and an active application role. Unknown/disabled identities are denied. Bootstrap administrators are protected. Development has a fixed demo administrator.
 
-Mutations check capability, origin, CSRF token, bounded form input, and the rendered activity revision. Successful changes append activity history. Stale forms are rejected rather than overwriting newer work. Backup and restore remain operator CLI actions.
+Mutations check capability, origin, CSRF token, bounded form input, and the rendered activity revision. Successful changes append activity history. Stale forms are rejected rather than overwriting newer work. The admin-only `backups.manage` capability permits consistent backup downloads and bounded multipart restore uploads. Uploads validate an isolated migrated copy and retain the original schema in a private staging directory, without replacing live records. Actual restore remains an operator CLI action with the service stopped.
 
 ## Validation and deployment
 

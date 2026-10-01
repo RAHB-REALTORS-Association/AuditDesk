@@ -71,3 +71,9 @@
 - Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access authenticates test/production; development is an open synthetic sandbox. Email delivery now defaults to disabled in configuration as well as containers.
 
 - Disposable development/PR previews: seeded synthetic audits, fixed demo identity, ignored integration credentials, hard Bridge/email guards, no scheduler or volume, and retained form protection.
+
+## Unreleased — administrator recovery controls
+
+- Add Manage → Recovery for IT administrators to download consistent database snapshots and validate/stage restore uploads.
+- Check uploaded database structure, integrity, supported schema, migration, and administrator access without changing live state; preserve original backup schema and show counts, SHA-256, and restore instructions.
+- Keep replacement offline, preserve pre-restore snapshots, restrict recovery to administrators in test/production, and record export requests and restore staging in activity history.
