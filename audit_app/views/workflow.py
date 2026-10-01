@@ -2,6 +2,7 @@
 import html
 
 from ..asana import follow_up
+from ..board_scope import require_cornerstone_audit
 from ..database import connect
 from ..emailer import EmailError, resolve_recipients
 from ..templates import current_failure_templates, format_message_parts
@@ -29,6 +30,7 @@ def asana_handoff(config, data):
 
 def outcome_view(config, audit_id, issues="", error="", preview=False):
     with connect(config.database_path) as db:
+        require_cornerstone_audit(db, audit_id)
         row = db.execute("""SELECT a.*,l.mls_number,l.address,l.agent_name AS listing_agent_name,
             l.agent_email,l.brokerage_email,l.broker_email,l.broker_first_name FROM audits a
             JOIN listings l ON l.id=a.listing_id WHERE a.id=?""", (audit_id,)).fetchone()

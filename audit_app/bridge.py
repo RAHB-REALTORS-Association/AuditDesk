@@ -134,13 +134,17 @@ class BridgeClient:
         start_text = start.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         end_text = end.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         params = {
-            "$filter": f"{fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
+            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
             "$select": ",".join(dict.fromkeys(fields.values())),
             "$top": 200,
             "$orderby": fields["entry_timestamp"] + " asc",
         }
         for row in self._collection("Property", params):
             listing = {name: row.get(field) for name, field in fields.items()}
+            board = listing.get('originating_system_name')
+            if not isinstance(board, str) or board.strip() != 'Cornerstone':
+                continue
+            listing['originating_system_name'] = board.strip()
             if not listing["listing_id"] or not listing["entry_timestamp"]:
                 raise BridgeError("A Bridge listing is missing its ID or entry timestamp")
             entered = datetime.fromisoformat(str(listing["entry_timestamp"]).replace("Z", "+00:00"))

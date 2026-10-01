@@ -19,7 +19,7 @@ LOG = logging.getLogger("audit_app")
 LISTING_COLUMNS = (
     "bridge_listing_id", "mls_number", "status", "entry_timestamp", "address", "agent_id",
     "agent_name", "agent_email", "brokerage_id", "brokerage_name", "brokerage_email", "brokerage_address",
-    "broker_id", "broker_name", "broker_first_name", "broker_email", "first_processed_at", "processing_status",
+    "broker_id", "broker_name", "broker_first_name", "broker_email", "first_processed_at", "processing_status", "originating_system_name",
 )
 
 
@@ -32,6 +32,7 @@ def job_lock(path):
 
 def choose_fairly(candidates, history, config, rng=random, rate=None, office_cooldown_days=None):
     """Binomial rate target, then weighted brokerage lottery with cooldowns."""
+    candidates = [row for row in candidates if row.get('originating_system_name') == 'Cornerstone']
     rate = config.rate if rate is None else rate
     office_cooldown_days = config.brokerage_cooldown_days if office_cooldown_days is None else office_cooldown_days
     target = sum(rng.random() < rate for _ in candidates)
@@ -68,7 +69,7 @@ def _recent_history(db, config, now, office_cooldown_days=None):
     office_cooldown_days = config.brokerage_cooldown_days if office_cooldown_days is None else office_cooldown_days
     office_cutoff = (now - timedelta(days=office_cooldown_days)).isoformat(timespec="seconds")
     broker_cutoff = (now - timedelta(days=config.broker_cooldown_days)).isoformat(timespec="seconds")
-    rows = db.execute("SELECT brokerage_id, broker_id, selected_at FROM audits WHERE selected_at >= ? OR selected_at >= ?", (office_cutoff, broker_cutoff)).fetchall()
+    rows = db.execute("SELECT a.brokerage_id, a.broker_id, a.selected_at FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND (a.selected_at >= ? OR a.selected_at >= ?)", (office_cutoff, broker_cutoff)).fetchall()
     return [{"brokerage_id": row["brokerage_id"], "broker_id": row["broker_id"], "office_recent": row["selected_at"] >= office_cutoff, "broker_recent": row["selected_at"] >= broker_cutoff} for row in rows]
 
 
@@ -84,6 +85,11 @@ def deliver_audit(config, audit_id, retry=False, sender=None):
         if not db.in_transaction:
             db.execute("BEGIN IMMEDIATE")
         audit = db.execute("SELECT * FROM audits WHERE id=?", (audit_id,)).fetchone()
+        if audit:
+            board = db.execute('SELECT originating_system_name FROM listings WHERE id=?', (audit['listing_id'],)).fetchone()
+            if not board or board[0] != 'Cornerstone':
+                LOG.warning('audit_delivery_blocked_by_board_scope audit_id=%s', audit_id)
+                return False
         if not audit or audit["email_status"] != ("email_failed" if retry else "email_pending"):
             db.rollback()
             return False
@@ -179,6 +185,8 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                     db.execute("BEGIN IMMEDIATE")
                 fresh = []
                 for listing in fetched:
+                    if listing.get('originating_system_name') != 'Cornerstone':
+                        continue
                     values = {
                         "bridge_listing_id": str(listing["listing_id"]),
                         "mls_number": listing["mls_number"],
@@ -198,6 +206,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                         "broker_email": listing.get("broker_email"),
                         "first_processed_at": now.isoformat(timespec="seconds"),
                         "processing_status": "processed_not_selected",
+                        "originating_system_name": listing['originating_system_name'],
                     }
                     placeholders = ",".join("?" for _ in LISTING_COLUMNS)
                     cursor = db.execute(f"INSERT OR IGNORE INTO listings({','.join(LISTING_COLUMNS)}) VALUES({placeholders})", tuple(values[key] for key in LISTING_COLUMNS))
@@ -234,7 +243,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                 db.commit()
             # Resume committed requests that never began sending, including after downtime.
             with connect(config.database_path) as db:
-                audit_ids = [row[0] for row in db.execute("SELECT id FROM audits WHERE email_status='email_pending'")]
+                audit_ids = [row[0] for row in db.execute("SELECT a.id FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.email_status='email_pending' AND l.originating_system_name='Cornerstone'")]
             failed_deliveries = routing_failures
             for audit_id in audit_ids:
                 if not deliver_audit(config, audit_id, sender=sender):

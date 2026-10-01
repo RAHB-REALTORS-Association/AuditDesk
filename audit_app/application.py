@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from flask import Flask, Response, abort, g, redirect, request, session
 from werkzeug.exceptions import HTTPException
 
+from .board_scope import require_cornerstone_audit
 from . import web
 from .views.errors import error_page
 from .assignment import assign_audits, assign_reviewer
@@ -294,6 +295,7 @@ def create_app(config=None, verifier=None):
     def outcome(audit_id):
         result, action, issues = (request.form.get(k, "") for k in ("outcome", "action", "issues"))
         with connect(config.database_path) as db:
+            require_cornerstone_audit(db, audit_id)
             if not db.execute("SELECT 1 FROM audits WHERE id=?", (audit_id,)).fetchone():
                 abort(404)
         try:

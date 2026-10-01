@@ -4,6 +4,7 @@ from .security import event
 import json
 import logging
 
+from .board_scope import require_cornerstone_audit
 from .database import connect
 from .emailer import EmailError, resolve_recipients, send_failure_email, utcnow
 
@@ -22,6 +23,7 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
     with connect(config.database_path) as db:
         if not db.in_transaction:
             db.execute("BEGIN IMMEDIATE")
+        require_cornerstone_audit(db, audit_id)
         audit = db.execute("SELECT outcome,email_status FROM audits WHERE id=?", (audit_id,)).fetchone()
         if not audit:
             db.rollback()
@@ -50,6 +52,10 @@ def deliver_failure_notice(config, audit_id, retry=False, sender=None):
     with connect(config.database_path) as db:
         if not db.in_transaction:
             db.execute("BEGIN IMMEDIATE")
+        try:
+            require_cornerstone_audit(db, audit_id)
+        except ValueError:
+            return False
         audit = db.execute("SELECT * FROM audits WHERE id=?", (audit_id,)).fetchone()
         if not audit or audit["outcome"] != "failed" or audit["failure_email_status"] != expected:
             db.rollback()

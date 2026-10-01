@@ -2,6 +2,7 @@
 import re
 from urllib.parse import urlencode, urlsplit
 
+from .board_scope import require_cornerstone_audit
 from .database import connect
 from .security import event
 
@@ -30,6 +31,7 @@ def save_task_link(config, audit_id, raw):
         if parsed.scheme != 'https' or parsed.netloc != 'app.asana.com' or not task_path or any(ord(c) < 32 for c in value):
             raise ValueError('Paste an HTTPS task link from app.asana.com.')
     with connect(config.database_path) as db:
+        require_cornerstone_audit(db, audit_id)
         audit = db.execute('SELECT outcome FROM audits WHERE id=?', (audit_id,)).fetchone()
         if not audit or audit['outcome'] != 'failed':
             raise ValueError('Asana follow-up is available only for a recorded failed audit.')
