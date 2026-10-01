@@ -1,10 +1,16 @@
 # Changelog
 
-## Unreleased — brokerage cooldown setting
+## Unreleased — Manage, list controls, and delivery visibility
 
-- Add a protected brokerage office cooldown control under Admin → Selection settings, with a 0–365 day range and activity history.
-- Apply the saved value to future audit selections and record it in selection metadata; preserve the separate broker cooldown.
-- Migrate existing databases to schema version 3 without changing saved percentages or earlier audits.
+- Group selection settings, request/failure email wording, and account access under one role-aware Manage workspace.
+- Persist brokerage office cooldown, broker cooldown, and initial listing window; apply validated business settings to future runs and record changes in activity history.
+- Upgrade to schema version 4 additively, preserving saved selection percentages, office cooldowns, and audit data from version 3.
+- Combine search, status filters, and column visibility in one compact list control.
+- Add row counts and First/Previous/Next/Last controls to all six table views; search and sort complete matching histories beyond the former recent-record limits.
+- Keep brokerage branches together and retain bulk selections across pages, filters, sorting, and browser Back navigation; exports keep their existing scope.
+- Remove the sidebar's daily-selection timezone footer.
+- Include recipient-validation failures in scheduled run email error summaries; surface unresolved errors on older completed runs and distinguish pending mail.
+- Keep completed intake from being repeated merely because a notification failed.
 
 ## Unreleased — PDF pagination fix
 
@@ -65,3 +71,11 @@
 - Removed Basic Auth and shared username/password configuration entirely; Cloudflare Access authenticates test/production; development is an open synthetic sandbox. Email delivery now defaults to disabled in configuration as well as containers.
 
 - Disposable development/PR previews: seeded synthetic audits, fixed demo identity, ignored integration credentials, hard Bridge/email guards, no scheduler or volume, and retained form protection.
+
+## Unreleased — administrator recovery controls
+
+- Add Manage → Recovery for IT administrators to download consistent database snapshots and validate/stage restore uploads.
+- Check uploaded database structure, integrity, supported schema, migration, and administrator access without changing live state; preserve original backup schema and show counts, SHA-256, and restore instructions.
+- Keep replacement offline, preserve pre-restore snapshots, restrict recovery to administrators in test/production, and record export requests and restore staging in activity history.
+
+- Consolidate selection percentage, office and individual broker cooldowns, and intake window into one consistently styled form with an atomic Save action.

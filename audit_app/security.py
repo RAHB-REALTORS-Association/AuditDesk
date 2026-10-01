@@ -12,7 +12,7 @@ from .database import connect
 CAPABILITIES = {
     "reviewer": frozenset({"audits.read", "audits.result", "email.retry", "reports.read"}),
     "manager": frozenset({"audits.read", "audits.result", "email.retry", "reports.read", "audits.assign", "settings.manage", "templates.manage"}),
-    "admin": frozenset({"audits.read", "audits.result", "email.retry", "reports.read", "audits.assign", "settings.manage", "templates.manage", "users.manage", "activity.read"}),
+    "admin": frozenset({"audits.read", "audits.result", "email.retry", "reports.read", "audits.assign", "settings.manage", "templates.manage", "users.manage", "activity.read", "backups.manage"}),
 }
 
 

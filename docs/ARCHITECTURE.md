@@ -12,6 +12,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/application.py` | Flask app factory, identity/request guards, authorization, routes, mutation orchestration, exports, errors, and response headers |
 | `audit_app/runtime.py` | Service lock, interrupted-work recovery, optional scheduler, local HTTP startup |
 | `audit_app/web.py` | Page composition, navigation, tab capability map, history queries, and form revisions |
+| `audit_app/lists.py` | Validated page sizes, parameterized filters, sorting, and shared list controls |
 | `audit_app/views/common.py` | Escaping, local time, status badges, sort headings, recipients, and CSRF form tokens |
 | `audit_app/views/workflow.py` | Audit result forms and failed-notice previews |
 | `audit_app/views/management.py` | Selection settings, access management, and activity views |
@@ -19,7 +20,7 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 | `audit_app/views/reports.py` | Daily and brokerage HTML reports |
 | `audit_app/static/` | Shared styles, navigation/sorting/column/branch scripts, email editor script, and branding |
 
-Table column controls share one browser script. Preferences are stored by table in browser storage; hiding cells does not remove records or affect exports.
+List filters and row counts are represented in URLs; column preferences are stored by table in browser storage. `lists.py` bounds SQL history queries to a validated page size, applies parameterized search/status filters, and maps sort labels to fixed fields. Reports page aggregate rows, keeping brokerage branches with their parent. Hiding columns and paging do not affect full exports. Bulk selections persist across pages in tab-scoped storage, keyed by authenticated identity, with a 200-audit limit.
 
 Views format data and construct HTML. Routes authorize and validate HTTP input before calling workflow services. Visibility checks in navigation do not substitute for server-side permissions. `templates.py` handles email content and sanitization; it is separate from browser presentation in `views/`.
 
@@ -34,10 +35,10 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `job.py` | Active intake window, fair selection/cooldowns, duplicate prevention, request delivery and retries |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
 | `outcomes.py` | Single-assignment results and failure-notice delivery |
-| `assignment.py`, `settings.py` | Individual/bulk account assignments and managed selection percentage |
+| `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
-| `backup.py` | Consistent online backup and validated offline restore |
+| `backup.py` | Consistent online backup, bounded restore staging, and validated offline restore |
 | `office_backfill.py` | Address maintenance for older imported records |
 | `development.py`, `simulation.py` | Synthetic preview fixtures and isolated developer/CLI verification |
 
@@ -51,7 +52,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 3 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2 databases, preserves the saved selection percentage, and refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 4 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 
@@ -70,7 +71,7 @@ The scheduler checks every five minutes after 08:00 in `APP_TIMEZONE`. Completed
 
 Test/production require signed Access identity with the configured issuer/audience and an active application role. Unknown/disabled identities are denied. Bootstrap administrators are protected. Development has a fixed demo administrator.
 
-Mutations check capability, origin, CSRF token, bounded form input, and the rendered activity revision. Successful changes append activity history. Stale forms are rejected rather than overwriting newer work. Backup and restore remain operator CLI actions.
+Mutations check capability, origin, CSRF token, bounded form input, and the rendered activity revision. Successful changes append activity history. Stale forms are rejected rather than overwriting newer work. The admin-only `backups.manage` capability permits consistent backup downloads and bounded multipart restore uploads. Uploads validate an isolated migrated copy and retain the original schema in a private staging directory, without replacing live records. Actual restore remains an operator CLI action with the service stopped.
 
 ## Validation and deployment
 

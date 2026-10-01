@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -66,6 +66,12 @@ CREATE TABLE IF NOT EXISTS brokerage_cooldown_settings (
   days INTEGER NOT NULL CHECK(days BETWEEN 0 AND 365),
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS workflow_settings (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  broker_cooldown_days INTEGER NOT NULL CHECK(broker_cooldown_days BETWEEN 0 AND 365),
+  window_hours INTEGER NOT NULL CHECK(window_hours BETWEEN 1 AND 168),
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS email_attempts (
   id INTEGER PRIMARY KEY,
   audit_id INTEGER NOT NULL REFERENCES audits(id),
@@ -112,17 +118,18 @@ CREATE TABLE IF NOT EXISTS failure_email_attempts (
 );
 CREATE INDEX IF NOT EXISTS idx_audits_brokerage ON audits(brokerage_id, selected_at);
 CREATE INDEX IF NOT EXISTS idx_audits_broker ON audits(broker_id, selected_at);
+CREATE INDEX IF NOT EXISTS idx_audits_selected_at ON audits(selected_at);
 """
 
 
 @contextmanager
-def connect(path):
+def connect(path, *, check_revision=True):
     db = sqlite3.connect(path, timeout=30)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON")
     try:
         from flask import g, has_request_context, request
-        if has_request_context() and request.method == "POST" and hasattr(g, "expected_revision") and not getattr(g, "mutation_started", False):
+        if check_revision and has_request_context() and request.method == "POST" and hasattr(g, "expected_revision") and not getattr(g, "mutation_started", False):
             from werkzeug.exceptions import Conflict
             db.execute("BEGIN IMMEDIATE")
             revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
@@ -133,9 +140,9 @@ def connect(path):
         db.close()
 
 
-def init_db(path):
+def init_db(path, *, check_revision=True):
     Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with connect(path) as db:
+    with connect(path, check_revision=check_revision) as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise ValueError("Database schema is newer than this application")

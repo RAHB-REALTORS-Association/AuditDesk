@@ -19,7 +19,7 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
   const summary = document.createElement('button');
   summary.type = 'button';
   summary.className = 'column-toggle';
-  summary.textContent = 'Columns';
+  summary.textContent = 'Filters & columns';
   summary.setAttribute('popovertarget', picker.id);
   summary.setAttribute('aria-expanded', 'false');
   summary.setAttribute('aria-controls', picker.id);
@@ -57,7 +57,16 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
     apply();
     try { localStorage.removeItem(key); } catch { /* Optional persistence. */ }
   });
-  picker.append(choices, reset);
+  const filters = table.closest('.panel').querySelector('.list-filters');
+  if (filters) {
+    picker.append(filters);
+    if (new URLSearchParams(location.search).has('q') || new URLSearchParams(location.search).has('status')) {
+      summary.classList.add('filters-active');
+    }
+  }
+  const title = document.createElement('h3');
+  title.textContent = 'Columns';
+  picker.append(title, choices, reset);
   actions.append(summary);
   panelHead.append(actions);
   table.closest('.panel').append(picker);

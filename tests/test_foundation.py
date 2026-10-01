@@ -1,4 +1,5 @@
 import re
+import io
 import sqlite3
 import subprocess
 import tempfile
@@ -240,6 +241,130 @@ class FoundationTests(unittest.TestCase):
         result=run_job(cfg,FakeClient([]),now=NOW+timedelta(minutes=5),only_if_needed=True,sender=sender)
         self.assertNotIn('skipped',result)
 
+    def test_recipient_errors_mark_run_and_remain_visible_on_older_runs(self):
+        item = listing('routing-error')
+        item['broker_email'] = ''
+        sender = Mock()
+        run_job(self.config, FakeClient([item]), now=NOW, sender=sender)
+        sender.assert_not_called()
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT status FROM runs').fetchone()[0], 'completed_with_email_errors')
+            # Existing runs from older builds still surface unresolved delivery errors.
+            db.execute("UPDATE runs SET status='completed',error=NULL")
+            db.commit()
+        page = self.get('/?tab=runs', role='reviewer').text
+        self.assertIn('Completed With Email Errors', page)
+        self.assertIn('1 email(s) need attention', page)
+        client = Mock()
+        result = run_job(self.config, client, now=NOW, only_if_needed=True, sender=sender)
+        self.assertEqual(result['skipped'], 'already_ran_today')
+        client.active_new_listings.assert_not_called()
+
+    def test_disabled_email_is_visible_as_pending_on_run_list(self):
+        run_job(replace(self.config,email_enabled=False), FakeClient([listing('pending')]), now=NOW)
+        page = self.get('/?tab=runs').text
+        self.assertIn('Completed With Pending Email', page)
+        self.assertIn('email(s) pending; check email configuration', page)
+
+    def test_lists_page_filter_and_sort_the_full_history(self):
+        with connect(self.config.database_path) as db:
+            for number in range(205):
+                db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,first_processed_at,processing_status) VALUES(?,?,'Active',?,'Example',?,?)""",
+                    (str(number),f'PAGE-{number:03}',NOW.isoformat(),NOW.isoformat(),
+                     'email_failed' if number % 2 else 'processed_not_selected'))
+            db.commit()
+        page = self.get('/?tab=listings&per_page=10&page=21',role='reviewer').text
+        self.assertIn('201–205 of 205 records',page)
+        self.assertIn('<strong>PAGE-000</strong>',page)
+        self.assertNotIn('<strong>PAGE-204</strong>',page)
+        page = self.get('/?tab=listings&per_page=10&sort=MLS+%2F+Property&direction=asc').text
+        self.assertIn('<strong>PAGE-000</strong>',page)
+        self.assertNotIn('<strong>PAGE-204</strong>',page)
+        page = self.get('/?tab=listings&q=PAGE-20&status=email_failed').text
+        self.assertIn('1–2 of 2 records',page)
+        self.assertIn('<strong>PAGE-201</strong>',page)
+        self.assertNotIn('<strong>PAGE-202</strong>',page)
+        page = self.get('/?tab=listings&q=%27+OR+1%3D1--').text
+        self.assertIn('0–0 of 0 records',page)
+        self.assertIn('No records match these filters',page)
+        for query in ('per_page=100000','page=0','page=abc','page=999999999999'):
+            self.assertEqual(self.get('/?tab=listings&'+query).status_code,400)
+        page = self.get('/?tab=listings&page=999').text
+        self.assertIn('Page 9 of 9',page)
+
+    def test_filters_and_pagination_are_present_on_every_list(self):
+        for tab in ('audits','listings','runs','report','brokerages','activity'):
+            with self.subTest(tab=tab):
+                response = self.get('/?tab='+tab)
+                self.assertEqual(response.status_code,200,response.text)
+                self.assertIn('class="list-filters"',response.text)
+                self.assertIn('Rows per page',response.text)
+                self.assertNotIn('Daily selection ·',response.text)
+
+    def test_combined_selection_save_is_atomic_and_role_checked(self):
+        form = {'rate_percent':'8.5','cooldown_days':'21','broker_cooldown_days':'7','window_hours':'48'}
+        self.assertEqual(self.post('/manage/selection',form,role='reviewer').status_code,403)
+        self.assertEqual(self.post('/manage/selection',form,role='manager',page='/?tab=manage').status_code,303)
+        for invalid in ({'rate_percent':'101'}, {'cooldown_days':'366'}, {'window_hours':'0'}):
+            self.assertEqual(self.post('/manage/selection',{**form,'rate_percent':'9',**invalid},role='manager',page='/?tab=manage').status_code,400)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT rate_percent FROM selection_settings').fetchone()[0],'8.5')
+            self.assertEqual(db.execute('SELECT days FROM brokerage_cooldown_settings').fetchone()[0],21)
+            row=db.execute('SELECT * FROM workflow_settings').fetchone()
+            self.assertEqual((row['broker_cooldown_days'],row['window_hours']),(7,48))
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='settings.selection_updated'").fetchone()[0],1)
+
+    def test_manage_groups_controls_and_enforces_workflow_permissions(self):
+        self.assertEqual(self.get('/?tab=manage',role='reviewer').status_code,403)
+        manager = self.get('/?tab=manage',role='manager').text
+        self.assertIn('Save selection settings',manager)
+        self.assertIn('Audit request email',manager)
+        self.assertNotIn('href="/?tab=users"',manager)
+        self.assertIn('href="/?tab=users"',self.get('/?tab=manage').text)
+        form = {'broker_cooldown_days':'7','window_hours':'48'}
+        self.assertEqual(self.post('/manage/workflow',form,role='reviewer').status_code,403)
+        self.assertEqual(self.post('/manage/workflow',form,role='manager',page='/?tab=manage').status_code,303)
+        with connect(self.config.database_path) as db:
+            row=db.execute('SELECT * FROM workflow_settings').fetchone()
+            self.assertEqual((row['broker_cooldown_days'],row['window_hours']),(7,48))
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='settings.workflow_updated'").fetchone()[0],'manager')
+
+    def test_recovery_download_upload_and_permission_guards(self):
+        for role in ('reviewer','manager'):
+            self.assertEqual(self.get('/?tab=recovery',role=role).status_code,403)
+            self.assertEqual(self.post('/manage/backup',{},role=role).status_code,403)
+        download=self.post('/manage/backup',{},page='/?tab=recovery')
+        self.assertEqual(download.status_code,200,download.data[:100])
+        self.assertEqual(download.mimetype,'application/octet-stream')
+        self.assertIn('schema-4.sqlite3',download.headers['Content-Disposition'])
+        self.assertEqual(download.headers['Cache-Control'],'no-store')
+        snapshot=Path(self.temp.name)/'download.sqlite3'
+        snapshot.write_bytes(download.data)
+        download.close()
+        self.assertEqual(validate(snapshot),4)
+        def upload(value, role='admin', token=None):
+            self.get('/?tab=recovery',role=role)
+            with self.client.session_transaction(base_url=self.config.public_url) as session:
+                csrf=session['csrf']
+            with connect(self.config.database_path) as db:
+                revision=db.execute('SELECT COALESCE(max(id),0) FROM activity_events').fetchone()[0]
+            return self.client.post('/manage/restore', data={'backup':(io.BytesIO(value),'../../evil.sqlite3'),
+                'token':csrf if token is None else token,'revision':str(revision)}, base_url=self.config.public_url,
+                headers={'Cf-Access-Jwt-Assertion':self.token(role),'Origin':self.config.public_url})
+        self.assertEqual(upload(snapshot.read_bytes(),role='manager').status_code,403)
+        self.assertEqual(upload(snapshot.read_bytes(),token='bad').status_code,403)
+        self.assertEqual(upload(b'corrupt').status_code,400)
+        response=upload(snapshot.read_bytes())
+        self.assertEqual(response.status_code,303,response.text)
+        page=self.get(response.headers['Location']).text
+        self.assertIn('Validated restore file',page)
+        self.assertIn('RESTORE STOPPED AUDITDESK',page)
+        self.assertIn('SHA-256',page)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='backup.restore_staged'").fetchone()[0],'admin')
+        self.assertEqual(self.get('/?tab=recovery&restore=../../live').status_code,400)
+
     def test_intake_catches_up_from_last_success(self):
         run_job(self.config,FakeClient([]),now=NOW,sender=Mock())
         client=Mock();client.active_new_listings.return_value=[]
@@ -249,7 +374,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),3)
+        self.assertEqual(validate(file),4)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -261,7 +386,7 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(Path(restore(self.config,file,'RESTORE STOPPED AUDITDESK')),Path(self.config.database_path).resolve())
         self.assertTrue(list(Path(self.temp.name).glob('*.before-restore-*')))
         bad=Path(self.temp.name)/'bad.sqlite3';bad.write_bytes(b'not a database')
-        with self.assertRaises(sqlite3.DatabaseError):validate(bad)
+        with self.assertRaises(ValueError):validate(bad)
 
     def test_migrate_original_schema_and_preserve_data(self):
         # Exact baseline schema, not a synthetic facsimile of the current migration.
@@ -274,7 +399,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],4)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)

@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from .bridge import BridgeClient
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
-from .settings import brokerage_cooldown_days, selection_percent
+from .settings import brokerage_cooldown_days, selection_percent, workflow_config
 
 
 LOG = logging.getLogger("audit_app")
@@ -140,6 +140,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
         return simulate_cycle(config)
     init_db(config.database_path)
     with job_lock(config.database_path):
+        config = workflow_config(config)
         now = now or datetime.now(timezone.utc)
         if only_if_needed:
             local_now = now.astimezone(ZoneInfo(config.timezone))
@@ -208,11 +209,13 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                 selected = choose_fairly(fresh, _recent_history(db, config, now, office_cooldown_days),
                                          config, rng, rate=rate, office_cooldown_days=office_cooldown_days)
                 audit_ids = []
+                routing_failures = 0
                 for listing, metadata in selected:
                     try:
                         intended_to, intended_cc, actual = resolve_recipients(listing, config)
                         status, error = "email_pending", None
                     except EmailError as exc:
+                        routing_failures += 1
                         intended_to = [listing["broker_email"]] if listing.get("broker_email") else []
                         intended_cc = [address for address in (listing.get("brokerage_email"), listing.get("agent_email")) if address]
                         actual = [config.admin_email] if config.test_mode and config.admin_email else intended_to + intended_cc
@@ -232,10 +235,13 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
             # Resume committed requests that never began sending, including after downtime.
             with connect(config.database_path) as db:
                 audit_ids = [row[0] for row in db.execute("SELECT id FROM audits WHERE email_status='email_pending'")]
-            failed_deliveries = 0
+            failed_deliveries = routing_failures
             for audit_id in audit_ids:
                 if not deliver_audit(config, audit_id, sender=sender):
-                    failed_deliveries += 1
+                    with connect(config.database_path) as db:
+                        state = db.execute("SELECT email_status FROM audits WHERE id=?", (audit_id,)).fetchone()[0]
+                    if state != "email_pending":
+                        failed_deliveries += 1
             if failed_deliveries:
                 with connect(config.database_path) as db:
                     db.execute("UPDATE runs SET status='completed_with_email_errors', error=? WHERE id=?",

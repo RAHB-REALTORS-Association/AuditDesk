@@ -78,7 +78,9 @@ Committed pending request emails resume on the next job. Interrupted `email_send
 
 Backups contain private listing/contact data and application access grants. Restrict access and use encrypted storage outside the application host. Configure an operator-owned daily backup and retention schedule before production use; a persistent volume is not a backup.
 
-Online backup uses SQLite's consistent backup API:
+Administrators can download a consistent database snapshot from **Manage → Recovery**. The same page accepts a backup up to 512 MiB, checks its integrity, schema, migration, and administrator access, then stages the original file privately and displays its hash, record counts, and the exact offline restore command. Uploading never replaces live records. Remove staged files after recovery.
+
+Online backup also uses SQLite's consistent backup API from the CLI:
 
 ```sh
 python main.py backup --output /app/data/backups/auditdesk-YYYYMMDD.sqlite3
@@ -94,7 +96,7 @@ python main.py restore --input /app/data/backups/auditdesk-YYYYMMDD.sqlite3 --co
 
 Restore refuses a running service, checks integrity, foreign keys and supported schema, prepares a temporary database, preserves administrator access, saves a pre-restore backup, and replaces the database atomically. Files above 512 MiB are rejected. Resume the service and verify login and record counts. Restore rolls back all data to the backup time, so newer changes can be lost.
 
-Schema version 3 initializes a fresh database transactionally and accepts baseline/version-1/version-2 databases. Version 2 discarded the development-only audit roster and moved assignments to application user IDs; version 3 adds the managed brokerage cooldown while preserving the saved selection percentage and audit results. Until a manager saves a cooldown, the configured `BROKERAGE_COOLDOWN_DAYS` remains effective. Back up staging before upgrading. Newer unknown schema versions are rejected; version-2 images cannot open version-3 databases, so rollback requires a compatible image or the pre-upgrade backup.
+Schema version 4 initializes a fresh database transactionally and accepts baseline/version-1/version-2/version-3 databases. Version 2 discarded the development-only audit roster and moved assignments to application user IDs; version 3 adds the managed brokerage cooldown while preserving the saved selection percentage and audit results. Version 4 adds managed broker cooldown and listing-window settings without changing saved rates, office cooldowns, assignments, or results. Until a manager saves a cooldown, the configured `BROKERAGE_COOLDOWN_DAYS` remains effective. Back up staging before upgrading. Newer unknown schema versions are rejected; older version-2/version-3 images cannot open version-4 databases, so rollback requires a compatible image or the pre-upgrade backup.
 
 ## Releases and rollback
 
@@ -104,4 +106,4 @@ Before upgrading, take a verified backup and inspect schema compatibility. Stop/
 
 ## Deliberate scope
 
-This remains a focused audit application. No document upload, directory synchronization, publication scheduling, multi-tenancy, or distributed queues were added. Template Save deliberately changes future email wording; previews do not send. Recorded outcomes remain single-assignment. Template publication/version history and an in-app restore uploader are outside this foundation. The email editor script is served from static assets; legacy inline event handlers still require CSP `unsafe-inline`; external scripts and frames are blocked. The shared record-revision check is conservative: another user's change can require a refresh even on a different record.
+This remains a focused audit application. No document upload, directory synchronization, publication scheduling, multi-tenancy, or distributed queues were added. Template Save deliberately changes future email wording; previews do not send. Recorded outcomes remain single-assignment. Template publication/version history remains outside this foundation. Restore uploads only validate and stage files; database replacement remains a stopped-service CLI operation. The email editor script is served from static assets; legacy inline event handlers still require CSP `unsafe-inline`; external scripts and frames are blocked. The shared record-revision check is conservative: another user's change can require a refresh even on a different record.

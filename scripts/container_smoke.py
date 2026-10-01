@@ -48,6 +48,9 @@ try:
     ready()
     preview=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
     assert 'DEVELOPMENT SANDBOX' in preview and 'DEMO-1' in preview
+    assert 'class="list-filters"' in preview and 'Rows per page' in preview
+    manage=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/?tab=manage',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
+    assert 'Save selection settings' in manage and 'Individual broker cooldown' in manage and 'Manage sections' in manage
     pdf_check = """import urllib.request
 for period in ('3m', '6m', '1y'):
     request = urllib.request.Request(
