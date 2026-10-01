@@ -110,7 +110,8 @@ def build_brokerage_pdf(report):
         for branch in row["branches"]:
             branch_rows.append(len(data))
             address = escape(branch["address"] or "Address unavailable")
-            data.append([Paragraph(f'<font color="#28567e">Branch: {address}</font>', cell),
+            data.append([Paragraph(f'<font color="#28567e">Branch: {address}</font>'
+                         f'<br/><font size="7" color="#637589">{escape(row["name"])}</font>', cell),
                          Paragraph(f'{branch["listings"]:,}', cell_right),
                          Paragraph(f'{branch["audited"]:,}', cell_right),
                          Paragraph(rate_text(branch["percentage"]), cell_right),
@@ -135,7 +136,9 @@ def build_brokerage_pdf(report):
     styles.extend(("BACKGROUND", (0, index), (-1, index), colors.HexColor("#e6edf4")) for index in parent_rows)
     styles.extend(("BACKGROUND", (0, index), (-1, index), colors.white) for index in branch_rows)
     styles.extend(("LEFTPADDING", (0, index), (0, index), 19) for index in branch_rows)
-    styles.extend(("NOSPLIT", (0, start), (-1, end)) for start, end in group_ranges)
+    # Keep the brokerage heading with its first branch, but let large groups
+    # continue across pages instead of raising LayoutError for an oversized group.
+    styles.extend(("NOSPLIT", (0, start), (-1, min(start + 1, end))) for start, end in group_ranges)
     table.setStyle(TableStyle(styles))
     story.extend([table, Spacer(1, 14)])
 

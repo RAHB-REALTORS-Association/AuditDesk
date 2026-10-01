@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — PDF pagination fix
+
+- Allow large brokerage groups to span PDF pages instead of failing with a layout error.
+- Keep brokerage headings with the first branch, label continuation branches with their brokerage name, and repeat table headers.
+- Cover multi-page groups and authenticated PDF downloads for all reporting periods.
+
 ## Unreleased — email editor fix
 
 - Replace the message-body backing textarea with a native hidden input so only the rich editor is visible.

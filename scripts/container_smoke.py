@@ -48,6 +48,18 @@ try:
     ready()
     preview=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
     assert 'DEVELOPMENT SANDBOX' in preview and 'DEMO-1' in preview
+    pdf_check = """import urllib.request
+for period in ('3m', '6m', '1y'):
+    request = urllib.request.Request(
+        'http://127.0.0.1:8765/reports/brokerages.pdf?period=' + period,
+        headers={'Host': 'auditdesk-pr1.oncornerstone.app'})
+    with urllib.request.urlopen(request) as response:
+        body = response.read()
+        assert response.headers.get_content_type() == 'application/pdf'
+        assert body.startswith(b'%PDF-') and body.rstrip().endswith(b'%%EOF')
+print('PASS: PDF downloads for all report periods')
+"""
+    print(docker('exec',name,'python','-c',pdf_check))
     db_script="import glob,sqlite3; db=sqlite3.connect(glob.glob('/tmp/auditdesk-preview-*/sandbox.sqlite3')[0]); "
     docker('exec',name,'python','-c',db_script+"db.execute(\"UPDATE app_users SET display_name='Disposable change'\"); db.commit()")
     docker('restart',name)

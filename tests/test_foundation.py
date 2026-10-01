@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -80,6 +80,25 @@ class FoundationTests(unittest.TestCase):
         forged=jwt.encode(dict(sub='admin',email='admin@example.com',iss=self.config.access_issuer,aud=self.config.access_audience,iat=int(time.time()),exp=int(time.time())+30),badkey,algorithm='RS256')
         self.assertEqual(self.client.get('/',headers={'Cf-Access-Jwt-Assertion':forged}).status_code,401)
         self.assertEqual(self.get(role='unknown').status_code,403)
+
+    def test_pdf_download_paginates_large_groups_for_all_periods(self):
+        stamp = datetime.now(timezone.utc).isoformat()
+        with connect(self.config.database_path) as db:
+            for number in range(50):
+                db.execute("""INSERT INTO listings(bridge_listing_id,mls_number,status,entry_timestamp,
+                    address,brokerage_id,brokerage_name,brokerage_address,first_processed_at,processing_status)
+                    VALUES(?,?,'Active',?,'Example',?,'Example Realty',?,?,'processed_not_selected')""",
+                    (str(number),str(number),stamp,f"office-{number}",f"{number} Example Street, Hamilton ON",stamp))
+            db.commit()
+        for period in ('3m', '6m', '1y'):
+            response = self.get('/reports/brokerages.pdf?period='+period, role='reviewer')
+            self.assertEqual(response.status_code,200,response.data[:200])
+            self.assertEqual(response.mimetype,'application/pdf')
+            self.assertEqual(response.headers['Content-Disposition'],
+                             f'attachment; filename="auditdesk-brokerages-{period}.pdf"')
+            self.assertTrue(response.data.startswith(b'%PDF-'))
+            self.assertIn(b'%%EOF',response.data[-20:])
+        self.assertEqual(self.get('/reports/brokerages.pdf?period=2m').status_code,400)
 
     def test_role_boundaries_cover_routes_and_navigation(self):
         r=self.get(role='reviewer')

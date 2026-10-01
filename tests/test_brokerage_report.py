@@ -76,6 +76,16 @@ class BrokerageReportTests(unittest.TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
         self.assertIn(b"%%EOF", pdf[-20:])
 
+    def test_pdf_paginates_a_brokerage_with_many_branches(self):
+        for number in range(50):
+            self.add_listing(str(number), f"office-{number}", "2026-09-28T14:00:00+00:00",
+                             selected=True, office_address=f"{number} Example Street, Hamilton ON")
+        report = brokerage_statistics(self.config, "3m", date(2026, 9, 28))
+        self.assertEqual(report["rows"][0]["branch_count"], 50)
+        pdf = build_brokerage_pdf(report)
+        self.assertTrue(pdf.startswith(b"%PDF-"))
+        self.assertIn(b"%%EOF", pdf[-20:])
+
     def test_invalid_period_is_rejected(self):
         with self.assertRaises(ValueError):
             brokerage_statistics(self.config, "2m")
