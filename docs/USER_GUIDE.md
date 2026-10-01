@@ -119,3 +119,9 @@ Use **Review or copy follow-up details → Copy follow-up details** if prefillin
 Choose **Link task / copy details** in Audit history to open the follow-up page. Recording a failed result also takes you directly there. Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
 
 The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.
+
+## Cornerstone board boundary
+
+AuditDesk only imports and displays listings whose Bridge `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership.
+
+Older databases did not store this field. Those records are retained but hidden from listing/audit views and reports until IT verifies their board using `backfill-listing-boards`. An unverified or other-board listing cannot be assigned, have a result recorded, send/retry audit mail, or start an Asana follow-up. A notice identifies how many records await verification. Existing recorded history is not deleted.
