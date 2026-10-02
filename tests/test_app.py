@@ -15,7 +15,7 @@ from audit_app.simulation import simulate_cycle
 from audit_app.templates import current_templates, format_message_parts, save_templates, validate_templates
 
 
-NOW = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
 
 
 def listing(number, office="office-1", broker="broker-1"):
@@ -60,7 +60,7 @@ class AuditTests(unittest.TestCase):
 
     def test_scheduler_skips_before_eight_and_after_a_daily_run(self):
         client = FakeClient([listing("1")])
-        before = run_job(self.config, client, random.Random(1), NOW - timedelta(minutes=1), only_if_needed=True)
+        before = run_job(self.config, client, random.Random(1), NOW.replace(hour=11, minute=59), only_if_needed=True)
         self.assertEqual(before["skipped"], "before_daily_time")
         with patch("audit_app.job.send_email", return_value="message-1"):
             first = run_job(self.config, client, random.Random(1), NOW, only_if_needed=True)
@@ -152,8 +152,8 @@ class AuditTests(unittest.TestCase):
         with patch("audit_app.job.send_email", side_effect=__import__("audit_app.emailer", fromlist=["EmailError"]).EmailError("SendGrid returned HTTP 503")):
             run_job(self.config, FakeClient([listing("1")]), random.Random(1), NOW)
         with patch("audit_app.job.send_email", return_value="message-2") as send:
-            self.assertTrue(deliver_audit(self.config, 1, retry=True))
-            self.assertFalse(deliver_audit(self.config, 1, retry=True))
+            self.assertTrue(deliver_audit(self.config, 1, retry=True, now=NOW))
+            self.assertFalse(deliver_audit(self.config, 1, retry=True, now=NOW))
         self.assertEqual(send.call_count, 1)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM audits").fetchone()[0], 1)

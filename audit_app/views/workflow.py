@@ -7,6 +7,7 @@ from ..database import connect
 from ..emailer import EmailError, resolve_recipients
 from ..templates import current_failure_templates, format_message_parts
 from .common import badge, esc, local_time, retry_token
+from .deadlines import deadline_view, response_form
 
 
 def asana_handoff(config, data):
@@ -37,6 +38,7 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
     if not row:
         return '<section class="panel outcome-panel">Audit not found.</section>'
     data = dict(row)
+    response = '<div class="response-summary"><h3>Broker response</h3>' + deadline_view(config, data) + response_form(config, data, detailed=True) + '</div>'
     heading = f'<div class="panel-head"><div><h2>MLS {esc(data["mls_number"])} · {esc(data["address"])}</h2><p>{esc(data["brokerage_name"])} · {esc(data["broker_name"])}</p></div></div>'
     if data["outcome"]:
         details = ('<p class="form-error" role="alert">' + esc(error) + '</p>' if error else '')
@@ -68,9 +70,9 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
             error = str(exc)
     return f'''<section class="panel outcome-panel">{heading}<div class="outcome-content">
         {'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
+        {response}
         <form method="post" action="/outcome/{audit_id}" class="pass-form"><input type="hidden" name="token" value="{token}"><input type="hidden" name="outcome" value="passed"><button type="submit" name="action" value="record">Mark passed</button></form>
         <form method="post" action="/outcome/{audit_id}" class="failure-form"><input type="hidden" name="token" value="{token}"><input type="hidden" name="outcome" value="failed">
         <label for="issues">If the audit failed, describe each issue</label><textarea id="issues" name="issues" maxlength="5000" rows="7" placeholder="Describe the missing, incorrect, or incomplete items">{html.escape(issues)}</textarea>
         <p>The issues will appear in the follow-up email. Review the notice before sending.</p>
         <button type="submit" name="action" value="preview">Preview failed notice</button>{preview_html}</form></div></section>'''
-

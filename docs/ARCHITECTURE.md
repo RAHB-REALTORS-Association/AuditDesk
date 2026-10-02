@@ -34,6 +34,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `bridge.py` | OData metadata and listing/contact reads, field mapping, bounded transient retries |
 | `job.py` | Active intake window, fair selection/cooldowns, duplicate prevention, request delivery and retries |
 | `refresh.py` | Explicit bulk refresh of unsent audit listing/contact snapshots and recipients; bounded batches, job lock and conflict checks; no selection or delivery |
+| `office_calendar.py`, `responses.py` | Managed weekly hours/holiday dates, send/deadline availability, independently recorded response receipt |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
 | `outcomes.py` | Single-assignment results and failure-notice delivery |
 | `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |
@@ -53,7 +54,7 @@ Application-owned state includes selections, delivery attempts, reviewer assignm
 
 Test/production persist SQLite at `/app/data/audit.sqlite3`. The generated session signing key is stored beside it unless overridden. Development creates a fresh temporary directory per app startup, strips live settings, and seeds synthetic records. It never opens the configured live database.
 
-Schema version 7 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3/version-4/version-5/version-6 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. Version 5 adds an optional Asana task URL to audits and preserves existing records and settings. Version 6 adds nullable listing board provenance; missing historical values stay unverified until read back from Bridge. Version 7 adds nullable agent MLS identifiers; missing historical identifiers remain ineligible until backfilled, and `NONMEM` listings are excluded. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
+Schema version 8 initializes transactionally. Version 2 replaced the development-only reviewer roster with account assignments; version 3 adds a singleton table for the managed brokerage cooldown. Initialization supports baseline/version-1/version-2/version-3/version-4/version-5/version-6/version-7 databases and preserves the saved selection percentage. Version 4 adds a singleton workflow-settings row for broker cooldown and listing window; missing rows use environment defaults. Version 5 adds an optional Asana task URL to audits and preserves existing records and settings. Version 6 adds nullable listing board provenance; missing historical values stay unverified until read back from Bridge. Version 7 adds nullable agent MLS identifiers; missing historical identifiers remain ineligible until backfilled, and `NONMEM` listings are excluded. Version 8 adds the office calendar and nullable response deadline/receipt fields without rewriting historical sends or results. Legacy deadlines are derived from accepted send time plus 24 hours. It refuses unknown newer versions. See [deployment](DEPLOYMENT.md) for migration and recovery constraints.
 
 ## Selection and delivery lifecycle
 
@@ -62,9 +63,9 @@ Schema version 7 initializes transactionally. Version 2 replaced the development
 3. Brokerage/broker cooldowns remove ineligible candidates. Square-root volume weighting balances remaining brokerages; each broker/brokerage can be selected once per run.
 4. An audit and its recipient routing are committed before SendGrid is called. Missing/invalid contacts leave a visible failure.
 5. Each send attempt is recorded. Accepted sends become `email_sent`; explicit errors become `email_failed`; a lost response can become `email_unknown`.
-6. An accepted original request can receive one result. Passed results send no notice; failed results retain issues and a separate notice delivery history.
+6. Accepted requests store a UTC deadline 24 elapsed hours after acceptance. Staff record response receipt independently; neither calendar edits nor receipt corrections reset deadlines. An accepted original request can receive one result. Passed results send no notice; failed results retain issues and a separate notice delivery history.
 
-Pending requests resume on the next job. Explicit failures can be retried without creating another audit. Unknown deliveries are never automatically resent. Service startup converts interrupted sending states to unknown and interrupted runs to failed. Test audits cannot later send production requests or failure notices.
+Pending requests resume during an eligible office window. Both send time and the 24-hour deadline must be inside managed office hours and outside saved holiday dates. The scheduler drains the committed pending queue on every tick, independently of daily intake completion. Manual request retries follow the same calendar and queue when outside the window. Explicit failures can be retried without creating another audit. Unknown deliveries are never automatically resent. Service startup converts interrupted sending states to unknown and interrupted runs to failed. Test audits cannot later send production requests or failure notices.
 
 The scheduler checks every five minutes after 08:00 in `APP_TIMEZONE`. Completed intake suppresses another scheduled run that day; failed intake can retry. The Active-only rule still excludes listings that became inactive during downtime.
 

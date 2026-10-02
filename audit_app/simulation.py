@@ -70,7 +70,7 @@ def _listing(number, office, broker, entered, status="Active"):
 
 
 def simulate_cycle(config):
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime(2026, 9, 24, 13, tzinfo=timezone.utc)
     with tempfile.TemporaryDirectory(prefix="mls-audit-demo-") as folder:
         demo_config = replace(config, env="test", email_enabled=True, test_end_at=None, database_path=str(Path(folder) / "demo.sqlite3"),
                               admin_email="admin@example.invalid", sendgrid_key="", rate=0.05)
@@ -98,7 +98,7 @@ def simulate_cycle(config):
             first_status = selected["email_status"]
             considered = {row["mls_number"]: row["processing_status"] for row in db.execute("SELECT mls_number,processing_status FROM listings WHERE mls_number LIKE 'DEMO-%'")}
         second = run_job(demo_config, DemoBridge(rows), DemoLottery(), now, sender=sender)
-        retried = deliver_audit(demo_config, selected["id"], retry=True, sender=sender)
+        retried = deliver_audit(demo_config, selected["id"], retry=True, sender=sender, now=now)
         with connect(demo_config.database_path) as db:
             final_status = db.execute("SELECT email_status FROM audits WHERE id=?", (selected["id"],)).fetchone()[0]
             attempt_count = db.execute("SELECT count(*) FROM email_attempts WHERE audit_id=?", (selected["id"],)).fetchone()[0]

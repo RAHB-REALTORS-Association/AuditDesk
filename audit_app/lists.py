@@ -18,6 +18,7 @@ class ListPage:
     total: int = 0
     choices: tuple = ()
     facet_label: str = 'Status'
+    response: str = ''
 
     @classmethod
     def read(cls, tab):
@@ -30,6 +31,10 @@ class ListPage:
             page.size, page.number = int(raw_size), int(raw_page)
             page.query = request.args.get('q', '').strip()[:200]
             page.statuses = tuple(request.args.getlist('status')[:30])
+            if tab == 'audits':
+                page.response = request.args.get('response', '')
+                if page.response not in {'', 'overdue', 'awaiting_response', 'received', 'completed', 'unsent', 'unknown'}:
+                    abort(400, 'Choose a valid response filter.')
         return page
 
     def clamp(self, total):
@@ -52,6 +57,8 @@ class ListPage:
         if self.query:
             values.append(('q', self.query))
         values += [('status', value) for value in self.statuses]
+        if self.response:
+            values.append(('response', self.response))
         return values
 
     def url(self, **changes):
@@ -59,13 +66,20 @@ class ListPage:
 
     def filters(self):
         preserved = ''.join(f'<input type="hidden" name="{key}" value="{esc(value)}">'
-                            for key, value in self.params() if key not in {'q', 'status'})
+                            for key, value in self.params() if key not in {'q', 'status', 'response'})
         choices = ''.join(f'<label><input type="checkbox" name="status" value="{esc(value)}" '
                           f'{"checked" if value in self.statuses else ""}> {esc(value.replace("_", " ").title())}</label>'
                           for value in self.choices)
         reset = '/?' + urlencode([('tab', self.tab)] + [(key, value) for key, value in self.params() if key == 'period'])
+        response_filter = ''
+        if self.tab == 'audits':
+            options = ''.join(f'<option value="{value}" {"selected" if self.response == value else ""}>{label}</option>'
+                for value, label in (('', 'All responses'), ('overdue', 'Overdue'), ('awaiting_response', 'Awaiting response'),
+                    ('received', 'Response received · awaiting review'), ('completed', 'Completed'), ('unsent', 'Not sent'), ('unknown', 'Delivery uncertain')))
+            response_filter = f'<label>Broker response<select name="response">{options}</select></label>'
         return f'''<form class="list-filters" method="get" action="/">{preserved}
             <h3>Filters</h3><label>Search records<input type="search" name="q" maxlength="200" value="{esc(self.query) if self.query else ''}"></label>
+            {response_filter}
             {f'<fieldset><legend>{esc(self.facet_label)}</legend><div class="filter-choices">{choices}</div></fieldset>' if choices else ''}
             <div class="filter-actions"><button type="submit" class="primary-button">Apply filters</button><a href="{esc(reset)}">Clear filters</a></div></form>'''
 
@@ -94,6 +108,9 @@ def query_page(db, tab, source, search, status, sorts, default):
     if page.statuses:
         where.append(f'{status} IN ({",".join("?" for _ in page.statuses)})')
         values.extend(page.statuses)
+    if page.response:
+        where.append('response_status=?')
+        values.append(page.response)
     filtered = f'SELECT * FROM ({source})' + (' WHERE ' + ' AND '.join(where) if where else '')
     page.clamp(db.execute(f'SELECT count(*) FROM ({filtered})', values).fetchone()[0])
     label = request.args.get('sort', '') if has_request_context() else ''

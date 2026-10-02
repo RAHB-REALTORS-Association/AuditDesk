@@ -14,7 +14,7 @@ from audit_app.settings import (brokerage_cooldown_days, display_percent, save_b
 from audit_app.web import render
 
 
-NOW = datetime(2026, 9, 24, 12, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 24, 13, tzinfo=timezone.utc)
 
 
 class OneListing:
@@ -101,7 +101,7 @@ class SelectionSettingsTests(unittest.TestCase):
         init_db(self.config.database_path)
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 8)
         self.assertEqual(selection_percent(self.config), Decimal("12"))
         self.assertEqual(brokerage_cooldown_days(self.config), 14)
 

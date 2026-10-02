@@ -83,3 +83,7 @@ Saved wording applies to future sends and retries without restarting. Preview do
 Use preview-only `APP_ENV=development` and `PUBLIC_BASE_URL=auto`. Coolify's generated `COOLIFY_URL` supplies the browser origin; scheme-less domains and HTTP origin routes become an HTTPS browser origin. No persistent volume or integration keys are needed. Local development should keep an explicit `http://127.0.0.1:8765` origin.
 
 Test/production require an explicit HTTPS origin. See [Deployment](DEPLOYMENT.md) for the existing preview hostname template, Access setup, and storage requirements.
+
+## Office availability
+
+Weekly office hours and explicit holiday/full-day closure dates are managed in the database under **Manage → Hours & holidays**, rather than environment variables. Defaults are 08:30–16:30 Monday–Friday; no holidays are assumed. `APP_TIMEZONE` is also the office calendar timezone. Request delivery requires both the send time and its 24-hour deadline to fall in open hours. `SCHEDULER_ENABLED` must be true for queued requests to drain automatically; `EMAIL_ENABLED` and test-window protections still apply. Sent deadlines are fixed and survive calendar changes.

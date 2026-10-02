@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS audits (
   actual_recipients TEXT NOT NULL,
   test_mode INTEGER NOT NULL,
   email_sent_at TEXT,
+  response_due_at TEXT,
+  response_received_at TEXT,
   sendgrid_message_id TEXT,
   email_status TEXT NOT NULL,
   selection_metadata TEXT NOT NULL,
@@ -73,6 +75,12 @@ CREATE TABLE IF NOT EXISTS workflow_settings (
   id INTEGER PRIMARY KEY CHECK(id = 1),
   broker_cooldown_days INTEGER NOT NULL CHECK(broker_cooldown_days BETWEEN 0 AND 365),
   window_hours INTEGER NOT NULL CHECK(window_hours BETWEEN 1 AND 168),
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS office_calendar (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  weekly_hours TEXT NOT NULL,
+  holidays TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS email_attempts (
@@ -167,7 +175,8 @@ def init_db(path, *, check_revision=True):
             db.execute("ALTER TABLE email_template ADD COLUMN body_format TEXT NOT NULL DEFAULT 'plain'")
         audit_columns = {row["name"] for row in db.execute("PRAGMA table_info(audits)")}
         for name in ("outcome", "outcome_at", "issues", "failure_email_status", "failure_email_sent_at",
-                     "failure_message_id", "failure_last_error", "failure_actual_recipients", "asana_task_url"):
+                     "failure_message_id", "failure_last_error", "failure_actual_recipients", "asana_task_url",
+                     "response_due_at", "response_received_at"):
             if name not in audit_columns:
                 db.execute(f"ALTER TABLE audits ADD COLUMN {name} TEXT")
         # The separate roster was development-only; discard its assignments.

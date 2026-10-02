@@ -26,6 +26,8 @@ from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .refresh import refresh_audits
+from .office_calendar import save_calendar
+from .responses import record_response
 from .asana import save_task_link
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, delete_user, seed_admins
@@ -232,6 +234,24 @@ def create_app(config=None, verifier=None):
         save_workflow_settings(config, request.form)
         return done("manage", "Workflow settings saved for future runs.")
 
+    @app.post('/manage/calendar')
+    @require('settings.manage')
+    def office_calendar():
+        try:
+            save_calendar(config, request.form)
+        except ValueError as error:
+            return web.render(config, 'calendar', form_values=request.form, error=str(error)), 400
+        return done('calendar', 'Office calendar saved. Sent request deadlines are unchanged.')
+
+    @app.post('/audits/<int:audit_id>/response')
+    @require('audits.result')
+    def response_received(audit_id):
+        action = request.form.get('action', '')
+        if action not in {'received', 'reopen'}:
+            abort(400, 'Choose a valid response action.')
+        record_response(config, audit_id, request.form.get('received_at', ''), reopen=action == 'reopen')
+        return done('outcome', 'Response timer reopened.' if action == 'reopen' else 'Response received. The response timer has stopped; audit review remains open.', id=audit_id)
+
     @app.post("/users")
     @require("users.manage")
     def users():
@@ -338,6 +358,11 @@ def create_app(config=None, verifier=None):
             sent = deliver_failure_notice(config, audit_id, retry=bool(row and row["failure_email_status"] == "email_failed"))
         else:
             sent = deliver_audit(config, audit_id, retry=True)
+            if not sent:
+                with connect(config.database_path) as db:
+                    row = db.execute('SELECT email_status FROM audits WHERE id=?', (audit_id,)).fetchone()
+                if row and row['email_status'] == 'email_pending':
+                    return done('audits', 'Request queued for the next eligible office window. Email and scheduling must be enabled for automatic delivery.')
         return done("audits", "Email accepted by SendGrid." if sent else "Email was not sent. Check status and configuration.")
 
     @app.get("/reports/brokerages.pdf")

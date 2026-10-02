@@ -38,7 +38,7 @@ class RefreshTests(unittest.TestCase):
                 self.assertEqual(audit[field],old[field])
             self.assertEqual(db.execute('SELECT count(*) FROM email_attempts').fetchone()[0],0)
         sender=Mock(return_value='mock-message')
-        self.assertTrue(deliver_audit(self.config,1,retry=True,sender=sender))
+        self.assertTrue(deliver_audit(self.config,1,retry=True,sender=sender,now=NOW))
         self.assertEqual(sender.call_args.args[3],['corrected@example.invalid'])
 
     def test_refresh_skips_sent_unknown_and_completed_and_blocks_development(self):
@@ -65,7 +65,7 @@ class RefreshTests(unittest.TestCase):
         self.client.listing_by_key.return_value={**listing('1'),'agent_mls_id':'NONMEM'}
         self.assertEqual(refresh_audits(self.config,[1],self.client)['needs_attention'],1)
         sender=Mock()
-        self.assertFalse(deliver_audit(self.config,1,retry=True,sender=sender));sender.assert_not_called()
+        self.assertFalse(deliver_audit(self.config,1,retry=True,sender=sender,now=NOW));sender.assert_not_called()
 
     def test_targeted_bridge_read_ignores_intake_window_and_refreshes_contacts(self):
         client=BridgeClient(self.config)
