@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — account deletion and listing recovery
+
+- Add confirmed person deletion under Manage → Access, preserving audit history and clearing assignments; protect bootstrap administrators, your own account, and the last active administrator.
+- Refresh up to 20 selected failed or pending audit requests from Bridge after upstream listing/contact corrections, rebuilding recipients without sending email.
+- Preserve selection and delivery history, recheck Cornerstone/member eligibility, skip sent or completed audits, and reject conflicting or incomplete refresh batches.
+
 ## Unreleased — Manage, list controls, and delivery visibility
 
 - Group selection settings, request/failure email wording, and account access under one role-aware Manage workspace.

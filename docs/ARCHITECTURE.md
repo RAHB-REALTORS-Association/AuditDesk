@@ -33,6 +33,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `security.py` | Signed Cloudflare Access assertions, application identities/roles/capabilities, CSRF, bootstrap access |
 | `bridge.py` | OData metadata and listing/contact reads, field mapping, bounded transient retries |
 | `job.py` | Active intake window, fair selection/cooldowns, duplicate prevention, request delivery and retries |
+| `refresh.py` | Explicit bulk refresh of unsent audit listing/contact snapshots and recipients; bounded batches, job lock and conflict checks; no selection or delivery |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
 | `outcomes.py` | Single-assignment results and failure-notice delivery |
 | `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |

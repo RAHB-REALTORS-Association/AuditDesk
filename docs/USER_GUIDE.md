@@ -6,11 +6,21 @@ Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If ident
 
 | Role | Capabilities |
 | --- | --- |
-| Reviewer | View shared audits/listings/runs, record pass/fail results, retry failed emails, read reports and export brokerage PDFs |
+| Reviewer | View shared audits/listings/runs, refresh unsent audit data, record pass/fail results, retry failed emails, read reports and export brokerage PDFs |
 | Audit manager | Reviewer capabilities plus individual/bulk assignments, selection percentage and email templates |
 | IT administrator | Manager capabilities plus access management and activity-log export |
 
 No one receives a role automatically merely by signing in. IT can change or disable access under **Manage → Access**. Changes take effect on the next request. Bootstrap administrators are protected from demotion. Active accounts with permission to record audit results are available for assignment. Reviewer, Audit manager, and IT administrator roles currently have this permission. The activity log records the authenticated person making each change.
+
+IT can use **Delete person** in **Manage → Access** to remove an account and revoke access. Confirming deletion clears that person's audit assignments while preserving audits, results, email attempts, and activity history. Your own account, bootstrap administrators, and the last active administrator cannot be deleted.
+
+## Refresh corrected listing data
+
+After an upstream data issue has been corrected, open **Audit history**, select up to 20 affected audits, and choose **Refresh selected from Bridge**. AuditDesk fetches each listing by its Bridge key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.
+
+Only pending or explicitly failed original requests without an audit result are refreshed. Sent, sending, uncertain-delivery, and completed audits are skipped. Refresh preserves selections, assignments, and email-attempt history and sends no email. Review the recipients and delivery detail, then use **Retry email** when ready. Missing or invalid contacts remain flagged; listings that no longer meet the Cornerstone/member rules cannot be sent. Test mode still redirects delivery to the configured administrator.
+
+Bridge errors or conflicting record changes reject the refresh without saving a partial batch. Refresh is unavailable in the synthetic development sandbox.
 
 ## Development previews
 
