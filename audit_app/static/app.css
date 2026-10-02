@@ -195,7 +195,7 @@ header p,.panel-head p {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4,minmax(0,1fr));
+  grid-template-columns: repeat(5,minmax(0,1fr));
   gap: 16px;
   margin-bottom: 20px;
 }
@@ -1700,4 +1700,15 @@ a.sort-button { color: inherit; text-decoration: none; }
 #asana-heading { scroll-margin-top:1rem; }
 
 .access-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.office-calendar-form { max-width: 600px; }
+.office-hours { display: grid; gap: 12px; margin: 24px 0; }
+.office-hours-row { display: grid; grid-template-columns: 100px 1fr 1fr; align-items: center; gap: 16px; }
+.office-calendar-form label,.response-form label { display: grid; gap: 8px; }
+.office-calendar-form textarea { width: 100%; }
+.office-calendar-form input,.office-calendar-form textarea,.response-form input[type=datetime-local] { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: var(--surface); color: var(--text); }
+.response-summary { margin-bottom: 24px; }
+.response-form { margin: 12px 0; }
+.history-response { min-width: 200px; }
+.badge.warning { color: var(--warning, #a15c00); background: #fff4df; }
+@media (max-width: 480px) { .office-hours-row { grid-template-columns: 1fr 1fr; gap: 8px; } .office-hours-row strong { grid-column: 1 / -1; } }
 .danger-button { color: var(--danger, #b42318); border-color: #f0c6c2; }

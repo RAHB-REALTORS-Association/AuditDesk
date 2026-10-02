@@ -358,6 +358,11 @@ def create_app(config=None, verifier=None):
             sent = deliver_failure_notice(config, audit_id, retry=bool(row and row["failure_email_status"] == "email_failed"))
         else:
             sent = deliver_audit(config, audit_id, retry=True)
+            if not sent:
+                with connect(config.database_path) as db:
+                    row = db.execute('SELECT email_status FROM audits WHERE id=?', (audit_id,)).fetchone()
+                if row and row['email_status'] == 'email_pending':
+                    return done('audits', 'Request queued for the next eligible office window. Email and scheduling must be enabled for automatic delivery.')
         return done("audits", "Email accepted by SendGrid." if sent else "Email was not sent. Check status and configuration.")
 
     @app.get("/reports/brokerages.pdf")
