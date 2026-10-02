@@ -153,3 +153,25 @@ def save_user(config, form):
             active=excluded.active,version=app_users.version+1""", (email, name, role, int(active)))
         event(db, "access.updated", email, f"role={role}; active={active}")
         db.commit()
+
+
+def delete_user(config, user_id, version):
+    with connect(config.database_path) as db:
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        user = db.execute("SELECT * FROM app_users WHERE id=?", (user_id,)).fetchone()
+        if not user or not str(version).isdigit() or int(version) != user['version']:
+            raise ValueError('Access changed since this page loaded. Refresh and try again.')
+        if user['email'] in config.bootstrap_admins:
+            raise ValueError('Bootstrap administrators cannot be deleted.')
+        if has_request_context() and user['email'] == g.principal.email:
+            raise ValueError('You cannot delete your own account.')
+        if user['active'] and user['role'] == 'admin' and db.execute("SELECT count(*) FROM app_users WHERE active=1 AND role='admin'").fetchone()[0] <= 1:
+            raise ValueError('The last active administrator cannot be deleted.')
+        assigned = [row[0] for row in db.execute('SELECT id FROM audits WHERE assignee_user_id=?', (user_id,))]
+        for audit_id in assigned:
+            db.execute('UPDATE audits SET assignee_user_id=NULL WHERE id=?', (audit_id,))
+            event(db, 'audit.unassigned', audit_id, 'Account deleted: ' + user['email'])
+        event(db, 'access.deleted', user['email'], f'{len(assigned)} audits unassigned')
+        db.execute('DELETE FROM app_users WHERE id=?', (user_id,))
+        db.commit()

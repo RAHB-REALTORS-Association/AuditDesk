@@ -27,7 +27,7 @@ from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .asana import save_task_link
 from .outcomes import deliver_failure_notice, record_outcome
-from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, seed_admins
+from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, delete_user, seed_admins
 from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings, save_selection_settings
 from .templates import save_templates, save_failure_templates, validate_templates
 
@@ -236,6 +236,12 @@ def create_app(config=None, verifier=None):
     def users():
         save_user(config, request.form)
         return done("users", "Application access saved.")
+
+    @app.post('/users/<int:user_id>/delete')
+    @require('users.manage')
+    def remove_user(user_id):
+        delete_user(config, user_id, request.form.get('version',''))
+        return done('users', 'Person deleted. Their audits are now unassigned.')
 
     @app.post("/assignment/<int:item_id>")
     @require("audits.assign")

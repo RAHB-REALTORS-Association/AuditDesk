@@ -70,6 +70,22 @@ class FoundationTests(unittest.TestCase):
         return client.post(path, data=data, base_url=self.config.public_url,
                            headers={'Cf-Access-Jwt-Assertion':self.token(role), 'Origin':self.config.public_url, **headers})
 
+    def test_delete_person_revokes_access_clears_assignments_and_preserves_audits(self):
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            reviewer=db.execute("SELECT * FROM app_users WHERE subject='reviewer'").fetchone()
+            db.execute('UPDATE audits SET assignee_user_id=? WHERE id=1',(reviewer['id'],));db.commit()
+        self.assertEqual(self.post(f"/users/{reviewer['id']}/delete",{'version':str(reviewer['version'])},role='manager',page='/?tab=manage').status_code,403)
+        self.assertEqual(self.post(f"/users/{reviewer['id']}/delete",{'version':'999'},page='/?tab=users').status_code,400)
+        self.assertEqual(self.post(f"/users/{reviewer['id']}/delete",{'version':str(reviewer['version'])},page='/?tab=users').status_code,303)
+        self.assertEqual(self.get(role='reviewer').status_code,403)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0],3)
+            self.assertIsNone(db.execute('SELECT assignee_user_id FROM audits WHERE id=1').fetchone()[0])
+        with connect(self.config.database_path) as db:
+            admin=db.execute("SELECT * FROM app_users WHERE email='admin@example.com'").fetchone()
+        self.assertEqual(self.post(f"/users/{admin['id']}/delete",{'version':str(admin['version'])},page='/?tab=users').status_code,400)
+
     def test_errors_are_styled_without_authenticated_assets_and_escape_content(self):
         from audit_app.views.errors import error_page
         for response, status in ((self.client.get('/'),401),
