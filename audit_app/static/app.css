@@ -1698,3 +1698,6 @@ a.sort-button { color: inherit; text-decoration: none; }
 .asana-details-action { font-size:.8rem; }
 .asana-handoff { border:1px solid #c7d7fe; background:#f8faff; padding:1rem; border-radius:.75rem; }
 #asana-heading { scroll-margin-top:1rem; }
+
+.access-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.danger-button { color: var(--danger, #b42318); border-color: #f0c6c2; }

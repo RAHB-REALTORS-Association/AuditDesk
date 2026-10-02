@@ -1,5 +1,6 @@
 """Selection, application access, and activity views."""
 import html
+from flask import g, has_request_context
 
 from ..database import connect
 from ..lists import query_page
@@ -45,9 +46,9 @@ def users_view(config):
         user = dict(user) if user else {"email": "", "display_name": "", "role": "reviewer", "active": 1, "version": 0}
         roles = "".join(f'<option value="{role}" {"selected" if role == user["role"] else ""}>{label}</option>' for role, label in (("reviewer", "Reviewer"), ("manager", "Audit manager"), ("admin", "IT administrator")))
         removal = ''
-        if user['email'] and user['email'] not in config.bootstrap_admins:
+        if user['email'] and user['email'] not in config.bootstrap_admins and (not has_request_context() or user['email'] != g.principal.email):
             removal = f'<button type="submit" class="danger-button" formaction="/users/{user["id"]}/delete" formnovalidate data-confirm="Delete this person and revoke their access? Their audit assignments will be cleared; audit history will remain.">Delete person</button>'
-        return f'<form method="post" action="/users" class="access-form"><input type="hidden" name="token" value="{retry_token(config, "users")}"><input type="hidden" name="version" value="{user["version"]}"><label>Email <input type="email" name="email" required value="{html.escape(user["email"], quote=True)}" {"readonly" if user["email"] else ""}></label><label>Display name <input name="display_name" maxlength="100" value="{html.escape(user["display_name"], quote=True)}"></label><label>Role <select name="role">{roles}</select></label><label class="access-active"><input type="checkbox" name="active" value="1" {"checked" if user["active"] else ""}> Active</label><button type="submit">{"Save access" if user["email"] else "Grant access"}</button>{removal}</form>'
+        return f'<form method="post" action="/users" class="access-form"><input type="hidden" name="token" value="{retry_token(config, "users")}"><input type="hidden" name="version" value="{user["version"]}"><label>Email <input type="email" name="email" required value="{html.escape(user["email"], quote=True)}" {"readonly" if user["email"] else ""}></label><label>Display name <input name="display_name" maxlength="100" value="{html.escape(user["display_name"], quote=True)}"></label><label>Role <select name="role">{roles}</select></label><label class="access-active"><input type="checkbox" name="active" value="1" {"checked" if user["active"] else ""}> Active</label><div class="access-actions"><button type="submit">{"Save access" if user["email"] else "Grant access"}</button>{removal}</div></form>'
     return '<section class="panel access-panel"><div class="panel-head"><h2>People and roles</h2></div><div class="access-content"><p class="form-help">Cloudflare verifies identity. Only active people listed here may use AuditDesk. Active Reviewers, Audit managers, and IT administrators can be assigned audits. Bootstrap administrators are protected.</p>' + "".join(form(user) for user in users) + '<h3 class="access-heading">Add a person</h3>' + form() + '</div></section>'
 
 
