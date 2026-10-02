@@ -28,6 +28,22 @@ A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX bann
 
 ## Everyday audit work
 
+### Office calendar and queued requests
+
+Audit managers and IT administrators configure **Manage → Hours & holidays**. Set opening and closing times for each weekday; leave both blank for closed days. Defaults are 8:30 a.m.–4:30 p.m., Monday–Friday, in the deployment's office timezone (normally America/Toronto). Enter holidays, observed holidays, and full-day closures as YYYY-MM-DD dates, one per line. No holidays are imported automatically.
+
+Daily intake and selection still consider weekend and holiday listings. Original requests send only when the office is open **and the deadline 24 elapsed hours later is also within office hours**. With default hours, requests can send Monday–Thursday; Friday/weekend requests wait until Monday. A Monday holiday postpones that window to Tuesday. A holiday also blocks requests on the preceding day when their deadline would fall on the closure. Different daily hours narrow the allowed window accordingly.
+
+The enabled scheduler checks the pending queue every five minutes, even after that day's intake has completed. Explicit failures require Retry email; retrying outside a suitable window queues the corrected request. Email enablement, test routing, and uncertain-delivery safeguards still apply. Calendar changes affect queued requests and never move deadlines for sent requests. Failed-audit follow-up notices retain their existing manual workflow.
+
+### Broker response timers
+
+**Broker response** in Audit history shows time remaining, an amber warning in the final four hours, or how long a request is overdue, alongside its exact local due time. The clock starts when SendGrid accepts the original request, using provider acceptance rather than confirmation that the member read it. Queued/failed requests have no running timer; uncertain delivery is explicitly identified. Existing sent requests use their recorded send time plus 24 hours.
+
+Use **Filters & columns → Broker response** to find overdue requests, requests awaiting a response, or responses awaiting review. **Overdue responses** counts unfinished, sent requests with no recorded response whose deadline has passed. Visible clocks update each minute; reload to refresh counts, filters, and changes made by other staff.
+
+Reviewers can select **Response received** on a row to record receipt now. To enter an earlier actual receipt time, open **Record result** and use the optional office-time field in the Broker response section. Receipt stops the response clock while audit review remains open. It shows whether receipt was within 24 hours or after the deadline. **Reopen response timer** clears an incorrect receipt without changing the original deadline. Activity history records these changes. Recording a result also removes an audit from the open-response queue; it does not invent a receipt timestamp.
+
 1. Review Audit history. Selected listings, intended/actual recipients, delivery state, reviewer, and outcome are shown together.
 2. A manager assigns a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
 3. Once the original request is accepted by SendGrid, choose Record result. A pass records the result without another email. For a failure, describe the issues, preview the notice, then record and send. Each audit receives one result.

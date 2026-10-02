@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — office calendar and response deadlines
+
+- Manage opening/closing times by weekday and explicit holidays/office closures under Hours & holidays.
+- Continue daily selection on weekends and holidays while holding requests until both sending and the 24-hour deadline fall during office availability; drain queued requests independently of daily intake completion.
+- Add visible countdowns, overdue response counts and filters, and independently recorded response receipt times with correction and activity history.
+- Upgrade additively to schema 8; preserve prior send times/results and derive legacy deadlines from actual accepted sends. Back up before upgrade; schema-7 images require a pre-upgrade backup for rollback.
+
 ## Unreleased — account deletion and listing recovery
 
 - Add confirmed person deletion under Manage → Access, preserving audit history and clearing assignments; protect bootstrap administrators, your own account, and the last active administrator.
