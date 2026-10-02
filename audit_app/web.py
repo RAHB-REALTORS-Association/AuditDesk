@@ -135,7 +135,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                             sort_heading("Brokerage / Broker"), sort_heading("Agent"), sort_heading("Intended recipients"),
                             sort_heading("Actual recipient"), sort_heading("Mode / Status"), sort_heading("Work status"),
                             sort_heading("Assigned to"), sort_heading("History", "number"), sort_heading("Outcome"), "<th>Actions</th>"))
-        selectable = allowed("audits.assign")
+        selectable = allowed("audits.assign") or allowed("audits.refresh")
         if selectable:
             headings = '<th class="audit-select"><input type="checkbox" data-select-all aria-label="Select all displayed audits"></th>' + headings
         rows = ""
@@ -171,13 +171,16 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Audit history", "Cornerstone member listings only · Selection, recipient routing, and email delivery."
     if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery"}:
         if not rows:
-            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
+            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") or allowed("audits.refresh") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
         bulk = ""
-        if tab == "audits" and allowed("audits.assign") and audits:
+        if tab == "audits" and (allowed("audits.assign") or allowed("audits.refresh")) and audits:
             bulk_options = '<option value="" disabled selected>Choose an assignment</option><option value="unassigned">Unassigned — clear assignment</option>' + "".join(
                 f'<option value="{person["id"]}">{esc(person["display_name"] or person["email"])}{(" · " + esc(person["email"])) if person["display_name"] else ""}</option>'
                 for person in reviewers)
-            bulk = f'<form id="bulk-assignment" data-owner="{esc(g.principal.subject) if has_request_context() else "local"}" method="post" action="/assignments" class="bulk-assignment"><input type="hidden" name="token" value="{retry_token(config, "assignments")}"><span data-selection-count aria-live="polite">0 selected</span><label>Assign selected to <select name="assignee_user_id" required>{bulk_options}</select></label><button type="submit" class="primary-button" disabled>Apply to selected</button><button type="button" data-clear-selection disabled>Clear selection</button></form>'
+            assignment_controls = f'<label>Assign selected to <select name="assignee_user_id" required>{bulk_options}</select></label><button type="submit" class="primary-button" disabled>Apply to selected</button>' if allowed('audits.assign') else ''
+            refresh_controls = '<button type="submit" formaction="/audits/refresh" formnovalidate disabled title="Refresh up to 20 failed or pending requests; no email is sent">Refresh selected from Bridge</button>' if allowed('audits.refresh') else ''
+            bulk = f'<form id="bulk-assignment" data-owner="{esc(g.principal.subject) if has_request_context() else "local"}" method="post" action="/assignments" class="bulk-assignment"><input type="hidden" name="token" value="{retry_token(config, "assignments")}"><span data-selection-count aria-live="polite">0 selected</span>{assignment_controls}{refresh_controls}<button type="button" data-clear-selection disabled>Clear selection</button></form>'
+
         content = f'<section class="stats">{cards}</section><section class="panel"><div class="panel-head"><div><h2>{esc(title)}</h2><p>{list_page.total:,} matching records · Sort by a column heading</p></div><span class="live-dot">● &nbsp; Current data</span></div>{list_page.filters()}{bulk}<div class="table-wrap"><table data-server-list data-columns="{tab}" class="{"history-table" if tab == "audits" else "listing-table" if tab == "listings" else "runs-table"}"{" data-sortable" if tab in {"audits", "listings"} else ""}><thead><tr>{headings}</tr></thead><tbody>{rows}</tbody></table></div>{list_page.footer()}</section>'
     if tab in {'admin', 'manage', 'template', 'failure_template', 'users', 'recovery'}:
         sections = (('manage', 'Selection', 'settings.manage'), ('template', 'Audit request email', 'templates.manage'),

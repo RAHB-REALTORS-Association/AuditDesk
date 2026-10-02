@@ -25,6 +25,7 @@ from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
+from .refresh import refresh_audits
 from .asana import save_task_link
 from .outcomes import deliver_failure_notice, record_outcome
 from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, delete_user, seed_admins
@@ -108,7 +109,7 @@ def create_app(config=None, verifier=None):
             if request.mimetype != ('multipart/form-data' if recovery_upload else "application/x-www-form-urlencoded"):
                 abort(415, "Use an application form to submit changes.")
             if any(len(values) != 1 for key, values in request.form.lists()
-                   if not (request.path == "/assignments" and key == "audit_ids")):
+                   if not (request.path in {"/assignments", "/audits/refresh"} and key == "audit_ids")):
                 abort(400, "Repeated form fields are not allowed.")
             check_csrf(config)
             revision = request.form.get("revision", "")
@@ -317,6 +318,15 @@ def create_app(config=None, verifier=None):
         if result == 'failed':
             return done('outcome', 'Failed audit recorded. Create an Asana task below to start follow-up; review the notice status for email delivery.', id=audit_id)
         return done("audits", "Audit result recorded. Check notice status below.")
+
+    @app.post('/audits/refresh')
+    @require('audits.refresh')
+    def refresh_selected():
+        ids = request.form.getlist('audit_ids')
+        if not ids or len(ids) > 20 or any(not item.isascii() or not item.isdigit() for item in ids):
+            abort(400, 'Select between 1 and 20 audits to refresh from Bridge.')
+        result = refresh_audits(config, [int(item) for item in ids])
+        return done('audits', f"Refreshed {result['refreshed']} audits from Bridge. {result['skipped']} skipped (already sent or completed); {result['needs_attention']} still need attention. No email sent. Use Retry email when ready.")
 
     @app.post("/retry/<int:audit_id>")
     @app.post("/failure-retry/<int:audit_id>")

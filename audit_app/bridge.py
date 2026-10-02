@@ -158,23 +158,57 @@ class BridgeClient:
                 raise BridgeError("Bridge entry timestamp has no timezone")
             if listing["status"] != "Active" or not start <= entered < end:
                 continue
-            office = self._one("Office", listing.get("office_id"), self.offices)
-            office_map = self.config.field_map["Office"]
-            member_map = self.config.field_map["Member"]
-            agent = self._one("Member", listing.get("agent_id"), self.members)
-            broker_id = office.get(office_map["broker_id"])
-            broker = self._one("Member", broker_id, self.members)
-            listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])
-            listing["agent_email"] = listing.get("agent_email") or agent.get(member_map["email"])
-            listing["brokerage_name"] = listing.get("office_name") or office.get(office_map["name"])
-            listing["brokerage_id"] = listing.pop("office_id", None)
-            listing.pop("office_name", None)
-            listing["brokerage_email"] = office.get(office_map["email"])
-            listing["brokerage_address"] = office_address(office, office_map)
-            listing["broker_id"] = broker_id
-            listing["broker_name"] = broker.get(member_map["name"])
-            listing["broker_first_name"] = broker.get(member_map["first_name"])
-            listing["broker_email"] = broker.get(member_map["email"])
-            listing["mls_number"] = str(listing["mls_number"] or listing["listing_id"])
-            listing["address"] = listing["address"] or "Address unavailable"
-            yield listing
+            yield self._enrich_listing(listing)
+
+    def listing_by_key(self, key):
+        """Read a specific listing independently of its age or current status."""
+        fields = self.config.field_map['Property']
+        safe_key = str(key).replace("'", "''")
+        rows = list(self._collection('Property', {
+            '$filter': f"{fields['listing_id']} eq '{safe_key}'",
+            '$select': ','.join(dict.fromkeys(fields.values())), '$top': 2}))
+        if len(rows) != 1 or str(rows[0].get(fields['listing_id'])) != str(key):
+            raise BridgeError('Bridge could not uniquely identify the requested listing.')
+        listing = {name: rows[0].get(field) for name, field in fields.items()}
+        for name in ('originating_system_name','agent_mls_id'):
+            if isinstance(listing.get(name), str):
+                listing[name] = listing[name].strip()
+        if not listing['entry_timestamp']:
+            raise BridgeError('Bridge returned a listing without an entry timestamp.')
+        try:
+            entered = datetime.fromisoformat(str(listing['entry_timestamp']).replace('Z', '+00:00'))
+        except ValueError:
+            raise BridgeError('Bridge returned an invalid entry timestamp.') from None
+        if entered.tzinfo is None or not listing.get('status'):
+            raise BridgeError('Bridge returned a listing without a timezone or status.')
+        return self._enrich_listing(listing)
+
+    def _enrich_listing(self, listing):
+        if not is_eligible_listing(listing):
+            listing['brokerage_id'] = listing.pop('office_id', None)
+            listing['brokerage_name'] = listing.pop('office_name', None)
+            for name in ('brokerage_email','brokerage_address','broker_id','broker_name','broker_first_name','broker_email'):
+                listing[name] = None
+            listing['mls_number'] = str(listing['mls_number'] or listing['listing_id'])
+            listing['address'] = listing['address'] or 'Address unavailable'
+            return listing
+        office = self._one("Office", listing.get("office_id"), self.offices)
+        office_map = self.config.field_map["Office"]
+        member_map = self.config.field_map["Member"]
+        agent = self._one("Member", listing.get("agent_id"), self.members)
+        broker_id = office.get(office_map["broker_id"])
+        broker = self._one("Member", broker_id, self.members)
+        listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])
+        listing["agent_email"] = listing.get("agent_email") or agent.get(member_map["email"])
+        listing["brokerage_name"] = listing.get("office_name") or office.get(office_map["name"])
+        listing["brokerage_id"] = listing.pop("office_id", None)
+        listing.pop("office_name", None)
+        listing["brokerage_email"] = office.get(office_map["email"])
+        listing["brokerage_address"] = office_address(office, office_map)
+        listing["broker_id"] = broker_id
+        listing["broker_name"] = broker.get(member_map["name"])
+        listing["broker_first_name"] = broker.get(member_map["first_name"])
+        listing["broker_email"] = broker.get(member_map["email"])
+        listing["mls_number"] = str(listing["mls_number"] or listing["listing_id"])
+        listing["address"] = listing["address"] or "Address unavailable"
+        return listing

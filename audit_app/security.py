@@ -10,9 +10,9 @@ from flask import abort, g, has_request_context, request, session
 from .database import connect
 
 CAPABILITIES = {
-    "reviewer": frozenset({"audits.read", "audits.result", "email.retry", "reports.read"}),
-    "manager": frozenset({"audits.read", "audits.result", "email.retry", "reports.read", "audits.assign", "settings.manage", "templates.manage"}),
-    "admin": frozenset({"audits.read", "audits.result", "email.retry", "reports.read", "audits.assign", "settings.manage", "templates.manage", "users.manage", "activity.read", "backups.manage"}),
+    "reviewer": frozenset({"audits.read", "audits.result", "email.retry", "audits.refresh", "reports.read"}),
+    "manager": frozenset({"audits.read", "audits.result", "email.retry", "audits.refresh", "reports.read", "audits.assign", "settings.manage", "templates.manage"}),
+    "admin": frozenset({"audits.read", "audits.result", "email.retry", "audits.refresh", "reports.read", "audits.assign", "settings.manage", "templates.manage", "users.manage", "activity.read", "backups.manage"}),
 }
 
 

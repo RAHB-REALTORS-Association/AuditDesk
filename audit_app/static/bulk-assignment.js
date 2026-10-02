@@ -3,7 +3,7 @@ if (bulkForm) {
   const boxes = Array.from(document.querySelectorAll('input[name="audit_ids"][form="bulk-assignment"]'));
   const selectAll = document.querySelector('[data-select-all]');
   const clear = bulkForm.querySelector('[data-clear-selection]');
-  const submit = bulkForm.querySelector('[type="submit"]');
+  const submits = bulkForm.querySelectorAll('[type="submit"]');
   const count = bulkForm.querySelector('[data-selection-count]');
   const key = `auditdesk.selected.v1.${bulkForm.dataset.owner}`;
   let selected = new Set();
@@ -14,12 +14,13 @@ if (bulkForm) {
     } catch { /* Selection still works without browser storage. */ }
   }
   readSelection();
-  if ((new URLSearchParams(location.search).get('notice') || '').startsWith('Assignment updated for ')) selected.clear();
+  if ((new URLSearchParams(location.search).get('notice') || '').match(/^(Assignment updated for |Refreshed )/)) selected.clear();
 
   function updateSelection() {
     const checked = boxes.filter((box) => box.checked).length;
     count.textContent = `${selected.size} selected${selected.size > checked ? ` · ${checked} on this page` : ''}`;
-    submit.disabled = clear.disabled = selected.size === 0;
+    submits.forEach((submit) => { submit.disabled = selected.size === 0; });
+    clear.disabled = selected.size === 0;
     selectAll.checked = boxes.length > 0 && checked === boxes.length;
     selectAll.indeterminate = checked > 0 && checked < boxes.length;
     bulkForm.querySelectorAll('[data-off-page-selection]').forEach((input) => input.remove());

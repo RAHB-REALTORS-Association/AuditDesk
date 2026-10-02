@@ -86,6 +86,17 @@ class FoundationTests(unittest.TestCase):
             admin=db.execute("SELECT * FROM app_users WHERE email='admin@example.com'").fetchone()
         self.assertEqual(self.post(f"/users/{admin['id']}/delete",{'version':str(admin['version'])},page='/?tab=users').status_code,400)
 
+    def test_bulk_refresh_route_has_selection_and_accepts_multiple_ids(self):
+        self.seed_asana_audits()
+        page=self.get(role='reviewer').text
+        self.assertIn('Refresh selected from Bridge',page)
+        self.assertNotIn('Assign selected to',page)
+        with patch('audit_app.application.refresh_audits',return_value={'refreshed':2,'skipped':0,'needs_attention':0}) as refresh:
+            response=self.post('/audits/refresh',{'audit_ids':['1','3']},role='reviewer')
+            self.assertEqual(response.status_code,303)
+            self.assertEqual(refresh.call_args.args[1],[1,3])
+        self.assertEqual(self.post('/audits/refresh',{'audit_ids':['x']}).status_code,400)
+
     def test_errors_are_styled_without_authenticated_assets_and_escape_content(self):
         from audit_app.views.errors import error_page
         for response, status in ((self.client.get('/'),401),
