@@ -101,7 +101,7 @@ class BoardScopeTests(unittest.TestCase):
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
             self.assertIsNone(db.execute('SELECT agent_mls_id FROM listings').fetchone()[0])
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
         client=Mock();client._collection.return_value=iter([{'ListingKey':'old','OriginatingSystemName':'Cornerstone','ListAgentMlsId':'NONMEM'}])
         with patch('audit_app.job.send_email') as sender:
             result=backfill_listing_boards(self.config,client)
@@ -120,4 +120,4 @@ class BoardScopeTests(unittest.TestCase):
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
             self.assertIsNone(db.execute('SELECT originating_system_name FROM listings').fetchone()[0])
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)

@@ -14,6 +14,7 @@ from .bridge import BridgeClient
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
 from .settings import brokerage_cooldown_days, selection_percent, workflow_config
+from .office_calendar import can_send_request, read_calendar
 
 
 LOG = logging.getLogger("audit_app")
@@ -78,7 +79,7 @@ def _listing_dict(row):
     return dict(row)
 
 
-def deliver_audit(config, audit_id, retry=False, sender=None):
+def deliver_audit(config, audit_id, retry=False, sender=None, now=None):
     if config.env == "development" or not config.email_enabled or not config.test_window_open():
         LOG.info("test_window_closed", extra={"audit_id": audit_id})
         return False
@@ -113,6 +114,14 @@ def deliver_audit(config, audit_id, retry=False, sender=None):
             db.execute("UPDATE listings SET processing_status='email_failed' WHERE id=?", (audit["listing_id"],))
             db.commit()
             return False
+        moment = now or datetime.now(timezone.utc)
+        if not can_send_request(moment, config.timezone, read_calendar(config, db)):
+            if retry:
+                db.execute("UPDATE audits SET email_status='email_pending',last_error=NULL WHERE id=?", (audit_id,))
+                db.execute("UPDATE listings SET processing_status='email_pending' WHERE id=?", (audit['listing_id'],))
+                event(db, 'request_email.queued', audit_id, 'Waiting for office availability and a staffed 24-hour deadline')
+                db.commit()
+            return False
         db.execute("UPDATE audits SET email_status='email_sending', intended_to=?, intended_cc=?, actual_recipients=?, test_mode=?, last_error=NULL WHERE id=?",
                    (json.dumps(intended_to), json.dumps(intended_cc), json.dumps(actual), int(config.test_mode), audit_id))
         db.execute("UPDATE listings SET processing_status='email_pending' WHERE id=?", (audit["listing_id"],))
@@ -133,12 +142,27 @@ def deliver_audit(config, audit_id, retry=False, sender=None):
         LOG.warning("email_attempt_failed", extra={"audit_id": audit_id, "status": state})
         return False
     with connect(config.database_path) as db:
-        db.execute("UPDATE audits SET email_status='email_sent', email_sent_at=?, sendgrid_message_id=? WHERE id=?", (utcnow(), message_id, audit_id))
+        accepted = now or datetime.now(timezone.utc)
+        db.execute("UPDATE audits SET email_status='email_sent', email_sent_at=?, response_due_at=?, sendgrid_message_id=? WHERE id=?",
+                   (accepted.isoformat(timespec='seconds'), (accepted + timedelta(hours=24)).isoformat(timespec='seconds'), message_id, audit_id))
         db.execute("UPDATE listings SET processing_status='email_sent' WHERE id=?", (audit["listing_id"],))
         db.execute("UPDATE email_attempts SET completed_at=?, status='email_sent', sendgrid_message_id=? WHERE id=?", (utcnow(), message_id, attempt_id))
         db.commit()
     LOG.info("email_sent", extra={"audit_id": audit_id})
     return True
+
+
+def drain_pending_requests(config, now=None, sender=None):
+    """Called under the job lock, independently of daily intake completion."""
+    moment = now or datetime.now(timezone.utc)
+    if config.env == 'development' or not config.email_enabled or not config.test_window_open(moment):
+        return
+    with connect(config.database_path) as db:
+        if not can_send_request(moment, config.timezone, read_calendar(config, db)):
+            return
+        ids = [row[0] for row in db.execute("SELECT id FROM audits WHERE email_status='email_pending' AND outcome IS NULL ORDER BY selected_at,id")]
+    for audit_id in ids:
+        deliver_audit(config, audit_id, sender=sender, now=now)
 
 
 def run_job(config, client=None, rng=random, now=None, sender=None, only_if_needed=False):
@@ -148,8 +172,10 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
     init_db(config.database_path)
     with job_lock(config.database_path):
         config = workflow_config(config)
+        delivery_now = now  # Injected test clock; real delivery rechecks the actual time per request.
         now = now or datetime.now(timezone.utc)
         if only_if_needed:
+            drain_pending_requests(config, now=delivery_now, sender=sender)
             local_now = now.astimezone(ZoneInfo(config.timezone))
             today_eight = local_now.replace(hour=8, minute=0, second=0, microsecond=0)
             if local_now < today_eight:
@@ -248,7 +274,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                 audit_ids = [row[0] for row in db.execute("SELECT a.id FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.email_status='email_pending' AND l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM'")]
             failed_deliveries = routing_failures
             for audit_id in audit_ids:
-                if not deliver_audit(config, audit_id, sender=sender):
+                if not deliver_audit(config, audit_id, sender=sender, now=delivery_now):
                     with connect(config.database_path) as db:
                         state = db.execute("SELECT email_status FROM audits WHERE id=?", (audit_id,)).fetchone()[0]
                     if state != "email_pending":

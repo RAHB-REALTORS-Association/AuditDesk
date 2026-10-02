@@ -312,7 +312,7 @@ class FoundationTests(unittest.TestCase):
         run_job(replace(self.config,email_enabled=False), FakeClient([listing('pending')]), now=NOW)
         page = self.get('/?tab=runs').text
         self.assertIn('Completed With Pending Email', page)
-        self.assertIn('email(s) pending; check email configuration', page)
+        self.assertIn('email(s) queued; waiting for a request window or email enablement', page)
 
     def test_lists_page_filter_and_sort_the_full_history(self):
         with connect(self.config.database_path) as db:
@@ -502,12 +502,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-7.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-8.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),7)
+        self.assertEqual(validate(snapshot),8)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -539,7 +539,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),7)
+        self.assertEqual(validate(file),8)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -564,7 +564,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],7)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)
@@ -589,11 +589,28 @@ class FoundationTests(unittest.TestCase):
                     db.commit()
             thread=threading.Thread(target=other);thread.start();thread.join()
             return 'accepted-after-concurrent-change'
-        with patch('audit_app.job.send_email',side_effect=sender):
+        with patch('audit_app.job.send_email',side_effect=sender), patch('audit_app.job.can_send_request',return_value=True):
             response=self.post('/retry/1',{},role='reviewer')
         self.assertEqual(response.status_code,303,response.text)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT email_status FROM audits').fetchone()[0],'email_sent')
+
+    def test_calendar_and_response_permissions_and_filters(self):
+        self.assertEqual(self.get('/?tab=calendar',role='reviewer').status_code,403)
+        form={'holidays':'2026-12-25'}
+        for day in range(7):
+            form.update({f'open_{day}':'08:30' if day<5 else '',f'close_{day}':'16:30' if day<5 else ''})
+        self.assertEqual(self.post('/manage/calendar',form,role='reviewer').status_code,403)
+        self.assertEqual(self.post('/manage/calendar',form,role='manager').status_code,303)
+        self.assertIn('2026-12-25',self.get('/?tab=calendar',role='manager').text)
+        run_job(self.config,FakeClient([listing('1')]),now=NOW,sender=lambda *args:'accepted')
+        self.assertIn('Overdue by',self.get('/?tab=audits&response=overdue',role='reviewer').text)
+        self.assertEqual(self.post('/audits/1/response',{'action':'received'},role='reviewer').status_code,303)
+        self.assertIn('awaiting review',self.get('/?tab=audits&response=received',role='reviewer').text)
+        self.assertNotIn('MLS 1',self.get('/?tab=audits&response=overdue',role='reviewer').text)
+        self.assertEqual(self.post('/audits/1/response',{'action':'received'},role='reviewer').status_code,400)
+        self.assertEqual(self.post('/audits/1/response',{'action':'reopen'},role='reviewer').status_code,303)
+        self.assertEqual(self.get('/?tab=audits&response=bogus').status_code,400)
 
     def test_only_access_auth_is_supported(self):
         for mode in ('local', 'basic', 'none'):

@@ -16,7 +16,7 @@ from audit_app.templates import current_failure_templates, save_failure_template
 from audit_app.web import render
 
 
-NOW = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
 
 
 def listing(number):

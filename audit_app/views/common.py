@@ -23,7 +23,7 @@ def local_time(value, zone):
 
 
 def badge(status):
-    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment", "run_had_errors"} else "neutral"
+    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress", "response_received"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment", "run_had_errors"} else "neutral"
     label = status.replace("_", " ").title()
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
@@ -54,4 +54,3 @@ def recipients(value):
 
 def retry_token(config, audit_id):
     return csrf_token(config, audit_id)
-
