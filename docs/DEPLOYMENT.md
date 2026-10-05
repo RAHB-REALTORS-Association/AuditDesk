@@ -133,4 +133,6 @@ python main.py backfill-membership-classes
 
 Membership verification reads the stored listing agent's Member profile, reusing a per-command cache. It updates only missing membership classes and activity history; it does not select/reselect audits, rewrite recipients, or send email. Missing agents/classes stay unverified. The command can be resumed after interruption. Older databases missing board/MLS-ID provenance also need `backfill-listing-boards` as described above.
 
+The command logs metadata inspection, the number of missing records, and checked/verified/unverified counts after each processed listing. Ctrl+C retains already committed records; rerun the command to resume the remaining missing classes.
+
 Review **Manage → Listing eligibility** and its stored-data preview before restoring the intended scheduler/delivery settings. NL7 is excluded by default. Unverified queued requests cannot send; if they are attempted, they become failed with a verification reason. Refresh an unsent audit from the MLS to update its complete snapshot and recipients, then explicitly retry when appropriate. Verification alone does not retry failed requests. Development refuses live verification commands.

@@ -148,3 +148,21 @@ class EligibilityTests(unittest.TestCase):
             self.assertEqual(dict(db.execute('SELECT * FROM audits').fetchone()), original)
         with self.assertRaises(ValueError):
             backfill_membership_classes(replace(self.config, env='development'), client)
+
+    def test_interrupted_membership_verification_resumes_committed_records(self):
+        run_job(self.config, FakeClient([listing('1'), listing('2')]), random.Random(1), NOW)
+        with connect(self.config.database_path) as db:
+            db.execute('UPDATE listings SET agent_membership_class=NULL')
+            db.commit()
+        client = Mock()
+        client._one.side_effect = [{'MemberMlsSecurityClass':'NL7'}, KeyboardInterrupt()]
+        with self.assertRaises(KeyboardInterrupt):
+            backfill_membership_classes(self.config, client)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM listings WHERE agent_membership_class IS NULL').fetchone()[0], 1)
+        client._one.side_effect = None
+        client._one.return_value = {'MemberMlsSecurityClass':'MEMBER'}
+        self.assertEqual(backfill_membership_classes(self.config, client),
+                         {'checked':1,'verified':1,'unverified':0})
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='listing.membership_verified'").fetchone()[0], 2)
