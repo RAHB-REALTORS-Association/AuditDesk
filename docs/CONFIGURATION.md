@@ -87,3 +87,11 @@ Test/production require an explicit HTTPS origin. See [Deployment](DEPLOYMENT.md
 ## Office availability
 
 Weekly office hours and explicit holiday/full-day closure dates are managed in the database under **Manage → Hours & holidays**, rather than environment variables. Defaults are 08:30–16:30 Monday–Friday; no holidays are assumed. `APP_TIMEZONE` is also the office calendar timezone. Request delivery requires both the send time and its 24-hour deadline to fall in open hours. `SCHEDULER_ENABLED` must be true for queued requests to drain automatically; `EMAIL_ENABLED` and test-window protections still apply. Sent deadlines are fixed and survive calendar changes.
+
+## Listing eligibility
+
+**Manage → Listing eligibility** stores excluded membership-class codes and additional agent MLS IDs in SQLite. NL7 is excluded by default; NONMEM and non-Cornerstone boards remain mandatory exclusions. Codes are case-insensitive, deduplicated and limited to 50 per field. Managers and administrators may preview and save rules. Preview compares proposed rules with stored snapshots only; it does not query Bridge or send mail.
+
+The `Member.membership_class` field mapping currently uses `MemberMlsSecurityClass`. Metadata must contain this string field. Before enabling live intake with a new mapping, verify its value against a known NL7 listing agent: metadata presence alone does not establish which ITSO field contains the MUC code. Infrastructure field mappings remain an IT configuration; business exclusion codes are managed in the app.
+
+The same rules govern intake, selection, request/failure delivery, retries, refreshes, staff actions, lists and reports. Known excluded records remain stored but are hidden from ordinary lists/reports; their reasons can be reviewed in the eligibility preview. Historical membership classes start unverified: records remain visible if their board and MLS ID are eligible, but cannot send requests or failed-audit notices until verified. New intake missing a membership class fails visibly and rolls back its listing/selection transaction, allowing a later corrected run to reconsider those listings. Changes do not reselect already processed listings or automatically retry failed mail.
