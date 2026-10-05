@@ -39,23 +39,29 @@ Changing an image's `APP_PORT` alone does not change its Gunicorn command or hea
 | `TEST_MODE_END_AT` | Empty | Optional test cutoff as ISO 8601 with offset, e.g. `2026-10-15T00:00:00-04:00` |
 | `ADMIN_EMAIL` | Empty | Sole actual email recipient in test mode |
 
-Flags accept `1`, `true`, or `yes`, case-insensitively. A test cutoff blocks scheduled Bridge intake and all email sends after that time. Disabling the scheduler does not prevent a manually invoked `run` from reading Bridge. `EMAIL_ENABLED=false` blocks mail independently of intake. Development cannot activate either integration with these flags.
+Flags accept `1`, `true`, or `yes`, case-insensitively. A test cutoff blocks scheduled RESO Web API intake and all email sends after that time. Disabling the scheduler does not prevent a manually invoked `run` from reading the MLS. `EMAIL_ENABLED=false` blocks mail independently of intake. Development cannot activate either integration with these flags.
 
-## Bridge and SendGrid
+## RESO Web API and SendGrid
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `BRIDGE_BASE_URL` | Empty in code; example uses the `itso` OData endpoint | Live dataset base URL |
-| `BRIDGE_API_KEY` | Empty | Bridge credential |
-| `BRIDGE_AUTH_MODE` | `bearer` | `bearer` or `query`; use the mode required by the provider |
-| `BRIDGE_FIELD_MAP` | `bridge_fields.json` | JSON field map, relative to the working directory unless absolute |
+| `RESO_BASE_URL` | Empty in code; example uses the `itso` OData endpoint | Live dataset base URL |
+| `RESO_API_KEY` | Empty | MLS Web API credential |
+| `RESO_AUTH_MODE` | `bearer` | `bearer` or `query`; use the mode required by the provider |
+| `RESO_FIELD_MAP` | `bridge_fields.json` | JSON field map, relative to the working directory unless absolute |
 | `SENDGRID_API_KEY` | Empty | SendGrid credential |
 | `EMAIL_FROM_ADDRESS` | Empty | Verified sender address |
 | `EMAIL_FROM_NAME` | `MLS Audit Team` | Sender display name |
 
 The broker comes from `Property.ListOfficeKey` → `Office.OfficeBrokerKey` → `Member.MemberEmail`. Brokerage `OfficeEmail` and the listing agent are copied when available; the agent has a Member fallback. Duplicate addresses receive one copy. Missing/invalid broker or agent addresses prevent delivery even in test mode.
 
-The map in [`bridge_fields.json`](../bridge_fields.json) describes the `itso` fields used. Run `inspect-bridge` only as an authorized live diagnostic. The query and metadata conventions follow the [RESO Bridge API examples](https://www.reso.org/web-api-examples/mls/bridge-api-generic/).
+The map in [`bridge_fields.json`](../bridge_fields.json) describes the `itso` fields used. Run `inspect-reso` only as an authorized live diagnostic. The client uses [RESO Web API](https://www.reso.org/reso-web-api/) metadata and OData queries. Bridge is the current provider, not the protocol.
+
+### Provider configuration and compatibility
+
+`RESO_BASE_URL`, `RESO_API_KEY`, `RESO_AUTH_MODE` and `RESO_FIELD_MAP` are the preferred names. Existing `BRIDGE_BASE_URL`, `BRIDGE_API_KEY`, `BRIDGE_AUTH_MODE` and `BRIDGE_FIELD_MAP` remain supported when their RESO equivalent is absent. An explicitly set RESO value, including an empty value, takes precedence. Existing deployments do not need renamed variables to upgrade. The default `bridge_fields.json` filename and stored `bridge_listing_id` are historical names; neither requires Bridge as the provider. `inspect-bridge` remains an alias for `inspect-reso`.
+
+To configure another MLS service, supply its HTTPS OData service root, provisioned credential, supported authentication mode, and field map. The client reads Property, Member and Office resources, metadata, timestamps and pagination. It supports a provisioned bearer token or the provider's `access_token` query mode; it does not perform OAuth token acquisition/renewal. Validate resource/field availability with `inspect-reso` and verify broker relationships and membership-code meanings against that dataset before live intake. The current field map, Cornerstone board boundary, NONMEM and NL7 conventions are dataset/business requirements, not guarantees supplied by the transport standard. Other providers have not been integration-tested.
 
 ## Managed workflow settings and starting defaults
 
@@ -90,7 +96,7 @@ Weekly office hours and explicit holiday/full-day closure dates are managed in t
 
 ## Listing eligibility
 
-**Manage → Listing eligibility** stores excluded membership-class codes and additional agent MLS IDs in SQLite. NL7 is excluded by default; NONMEM and non-Cornerstone boards remain mandatory exclusions. Codes are case-insensitive, deduplicated and limited to 50 per field. Managers and administrators may preview and save rules. Preview compares proposed rules with stored snapshots only; it does not query Bridge or send mail.
+**Manage → Listing eligibility** stores excluded membership-class codes and additional agent MLS IDs in SQLite. NL7 is excluded by default; NONMEM and non-Cornerstone boards remain mandatory exclusions. Codes are case-insensitive, deduplicated and limited to 50 per field. Managers and administrators may preview and save rules. Preview compares proposed rules with stored snapshots only; it does not query the MLS or send mail.
 
 The `Member.membership_class` field mapping currently uses `MemberMlsSecurityClass`. Metadata must contain this string field. Before enabling live intake with a new mapping, verify its value against a known NL7 listing agent: metadata presence alone does not establish which ITSO field contains the MUC code. Infrastructure field mappings remain an IT configuration; business exclusion codes are managed in the app.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — RESO Web API terminology
+
+- Describe the MLS integration using the RESO Web API standard, with Bridge identified as the current ITSO provider. Use MLS wording for staff refresh controls and integration errors.
+- Prefer RESO_* configuration, ResoClient/ResoError, and inspect-reso while retaining existing Bridge names for compatibility. Document dataset mapping, authentication and eligibility requirements when configuring another MLS service.
+
 ## Unreleased — audit row actions
 
 - Replace text-heavy audit actions with labelled icons, revealed on row hover or keyboard focus and kept visible on touch devices. Preserve the existing forms, permissions and delivery behavior.

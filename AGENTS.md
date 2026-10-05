@@ -2,7 +2,7 @@
 
 ## Scope and workflow
 
-- Preserve Bridge intake, fair selection and cooldowns, SendGrid delivery protections, assignments, results, and reports.
+- Preserve RESO Web API intake, fair selection and cooldowns, SendGrid delivery protections, assignments, results, and reports.
 - Apply relevant guidance from the Cornerstone App Blueprint skill without adding unrelated features or replacing the existing deployment model.
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before structural changes. Update the relevant guide and changelog alongside code.
 - This project uses the [MIT License](LICENSE).
@@ -26,7 +26,7 @@
 
 - Cloudflare Access authenticates test/production; the app validates the signed assertion and enforces roles/capabilities. Never trust unsigned identity or role headers.
 - Assignments reference active application accounts with auditing permission; do not reintroduce a separate reviewer roster. Assignment responsibility and the authenticated actor making a change are separate. Reviewer, Audit manager, and IT administrator roles have distinct server-enforced permissions.
-- Development is open with a fixed demo administrator, synthetic fixtures, and fresh temporary storage per startup. Credentials and enable flags must never activate Bridge, email, scheduling, or live storage. Backup/restore and live maintenance commands stay unavailable.
+- Development is open with a fixed demo administrator, synthetic fixtures, and fresh temporary storage per startup. Credentials and enable flags must never activate MLS API access, email, scheduling, or live storage. Backup/restore and live maintenance commands stay unavailable.
 - Keep duplicate prevention, unknown-delivery handling, test-recipient substitution, test-to-production protections, and stale-form checks.
 - Never commit secrets, `.env`, session keys, real listings/contacts, database exports, backups, or generated reports.
 
