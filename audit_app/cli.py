@@ -28,7 +28,8 @@ class JsonFormatter(logging.Formatter):
     def format(self, record):
         data = {"time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "level": record.levelname,
                 "logger": record.name, "event": record.getMessage()}
-        for key in ("run_id", "audit_id", "status", "fetched", "new", "selected"):
+        for key in ("run_id", "audit_id", "status", "fetched", "new", "selected",
+                    "total", "checked", "verified", "unverified"):
             if hasattr(record, key):
                 data[key] = getattr(record, key)
         if record.exc_info:
@@ -66,7 +67,13 @@ def main():
         print(json.dumps(report, indent=2))
     elif args.command == 'backfill-membership-classes':
         from .eligibility_backfill import backfill_membership_classes
-        print(json.dumps(backfill_membership_classes(config)))
+        try:
+            print(json.dumps(backfill_membership_classes(config)))
+        except KeyboardInterrupt:
+            logging.getLogger('audit_app').warning(
+                'Membership verification interrupted. Committed records are retained; '
+                'rerun backfill-membership-classes to resume missing records.')
+            raise SystemExit(130) from None
     elif args.command == 'backfill-listing-boards':
         from .board_scope import backfill_listing_boards
         print(json.dumps(backfill_listing_boards(config)))
@@ -80,4 +87,3 @@ def main():
         print(json.dumps(simulate_cycle(config), indent=2))
     else:
         serve(config)
-
