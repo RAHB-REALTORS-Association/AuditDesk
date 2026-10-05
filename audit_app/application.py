@@ -360,9 +360,9 @@ def create_app(config=None, verifier=None):
     def refresh_selected():
         ids = request.form.getlist('audit_ids')
         if not ids or len(ids) > 20 or any(not item.isascii() or not item.isdigit() for item in ids):
-            abort(400, 'Select between 1 and 20 audits to refresh from Bridge.')
+            abort(400, 'Select between 1 and 20 audits to refresh from MLS.')
         result = refresh_audits(config, [int(item) for item in ids])
-        return done('audits', f"Refreshed {result['refreshed']} audits from Bridge. {result['skipped']} skipped (already sent or completed); {result['needs_attention']} still need attention. No email sent. Use Retry email when ready.")
+        return done('audits', f"Refreshed {result['refreshed']} audits from the MLS. {result['skipped']} skipped (already sent or completed); {result['needs_attention']} still need attention. No email sent. Use Retry email when ready.")
 
     @app.post("/retry/<int:audit_id>")
     @app.post("/failure-retry/<int:audit_id>")

@@ -51,7 +51,7 @@ def eligibility_reason(listing, rules=EligibilityRules(), *, require_class=False
     if membership in rules.membership_classes:
         return f'Excluded membership class: {membership}'
     if require_class and not membership:
-        return 'Agent membership class is unverified; refresh from Bridge before sending'
+        return 'Agent membership class is unverified; refresh from MLS before sending'
     return None
 
 

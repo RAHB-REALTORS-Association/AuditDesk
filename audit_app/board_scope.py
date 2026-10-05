@@ -21,10 +21,10 @@ def backfill_listing_boards(config, client=None):
     """Read board and agent MLS identifiers; never select audits or send mail."""
     if config.env == 'development':
         raise ValueError('Live board verification is unavailable in development.')
-    from .bridge import BridgeClient, BridgeError
+    from .bridge import ResoClient, ResoError
     from .job import job_lock
     init_db(config.database_path)
-    client = client or BridgeClient(config)
+    client = client or ResoClient(config)
     client.inspect_metadata()
     field = config.field_map['Property']['originating_system_name']
     member_field = config.field_map['Property']['agent_mls_id']
@@ -41,14 +41,14 @@ def backfill_listing_boards(config, client=None):
             for row in rows:
                 key = str(row.get(key_field, ''))
                 if key not in batch:
-                    raise BridgeError('Board verification returned an unexpected listing.')
+                    raise ResoError('Board verification returned an unexpected listing.')
                 board = row.get(field)
                 if isinstance(board, str) and board.strip():
                     board = board.strip()
                     member = row.get(member_field)
                     member = member.strip() if isinstance(member, str) and member.strip() else None
                     if key in found and found[key] != (board, member):
-                        raise BridgeError('Board verification returned conflicting listing boards.')
+                        raise ResoError('Board verification returned conflicting listing boards.')
                     found[key] = (board, member)
             with connect(config.database_path) as db:
                 for key, (board, member) in found.items():

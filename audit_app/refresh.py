@@ -3,7 +3,7 @@ import json
 
 from .board_scope import is_eligible_listing
 from .eligibility import eligibility_reason, read_rules
-from .bridge import BridgeClient, BridgeError
+from .bridge import ResoClient, ResoError
 from .database import connect
 from .emailer import EmailError, resolve_recipients
 from .job import LISTING_COLUMNS, job_lock
@@ -15,10 +15,10 @@ FIELDS = tuple(name for name in LISTING_COLUMNS if name not in {
 
 def refresh_audits(config, audit_ids, client=None):
     if config.env == 'development':
-        raise ValueError('Bridge refresh is unavailable in the development sandbox.')
+        raise ValueError('MLS refresh is unavailable in the development sandbox.')
     ids = list(dict.fromkeys(audit_ids))
     if not ids or len(ids) > 20:
-        raise ValueError('Select between 1 and 20 audits to refresh from Bridge.')
+        raise ValueError('Select between 1 and 20 audits to refresh from the MLS.')
     with job_lock(config.database_path):
         with connect(config.database_path) as db:
             rules = read_rules(db)
@@ -37,14 +37,14 @@ def refresh_audits(config, audit_ids, client=None):
                 snapshots.append((dict(audit),dict(listing)))
         if not snapshots:
             return {'refreshed':0,'skipped':skipped,'needs_attention':0}
-        client = client or BridgeClient(config, rules=rules)
+        client = client or ResoClient(config, rules=rules)
         updates = []
         try:
             client.inspect_metadata()
             for audit, previous in snapshots:
                 current = client.listing_by_key(previous['bridge_listing_id'])
                 if str(current.get('listing_id')) != previous['bridge_listing_id']:
-                    raise BridgeError('Bridge returned a different listing. No refresh was saved.')
+                    raise ResoError('MLS returned a different listing. No refresh was saved.')
                 error = None
                 try:
                     reason = eligibility_reason(current, rules, require_class=True)
@@ -57,7 +57,7 @@ def refresh_audits(config, audit_ids, client=None):
                     cc = [value for value in (current.get('brokerage_email'),current.get('agent_email')) if value]
                     actual = [config.admin_email] if config.test_mode else to + cc
                 updates.append((audit,previous,current,to,cc,actual,error))
-        except BridgeError as exc:
+        except ResoError as exc:
             raise ValueError(str(exc)) from None
         with connect(config.database_path) as db:
             if not db.in_transaction:
@@ -77,6 +77,6 @@ def refresh_audits(config, audit_ids, client=None):
                 if error:
                     db.execute("UPDATE audits SET email_status='email_failed' WHERE id=?",(audit['id'],))
                     db.execute("UPDATE listings SET processing_status='email_failed' WHERE id=?",(previous['id'],))
-                event(db,'audit.data_refreshed',audit['id'],'Bridge listing and contacts refreshed; no email sent')
+                event(db,'audit.data_refreshed',audit['id'],'MLS listing and contacts refreshed; no email sent')
             db.commit()
         return {'refreshed':len(updates),'skipped':skipped,'needs_attention':sum(bool(row[-1]) for row in updates)}

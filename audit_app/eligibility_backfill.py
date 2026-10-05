@@ -1,5 +1,5 @@
 """Verify membership classes for historical snapshots without sending requests."""
-from .bridge import BridgeClient
+from .bridge import ResoClient
 from .database import connect, init_db
 from .eligibility import code
 from .job import job_lock
@@ -10,7 +10,7 @@ def backfill_membership_classes(config, client=None):
     if config.env == 'development':
         raise ValueError('Live membership verification is unavailable in development.')
     init_db(config.database_path)
-    client = client or BridgeClient(config)
+    client = client or ResoClient(config)
     client.inspect_metadata()
     field = config.field_map['Member']['membership_class']
     checked = verified = 0

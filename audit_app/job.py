@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 from .board_scope import is_eligible_listing
 from .eligibility import EligibilityRules, eligibility_reason, read_rules
-from .bridge import BridgeClient, BridgeError
+from .bridge import ResoClient, ResoError
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
 from .settings import brokerage_cooldown_days, selection_percent, workflow_config
@@ -214,7 +214,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
         try:
             with connect(config.database_path) as db:
                 intake_rules = read_rules(db)
-            client = client or BridgeClient(config, rules=intake_rules)
+            client = client or ResoClient(config, rules=intake_rules)
             fetched = list(client.active_new_listings(start, now))
             with connect(config.database_path) as db:
                 if not db.in_transaction:
@@ -225,7 +225,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
                     if not is_eligible_listing(listing, rules):
                         continue
                     if not is_eligible_listing(listing, rules, require_class=True):
-                        raise BridgeError('Bridge did not return a membership class for a Cornerstone agent. Intake was not saved; verify the Member field map and retry after correcting the data.')
+                        raise ResoError('MLS did not return a membership class for a Cornerstone agent. Intake was not saved; verify the Member field map and retry after correcting the data.')
                     values = {
                         "bridge_listing_id": str(listing["listing_id"]),
                         "mls_number": listing["mls_number"],

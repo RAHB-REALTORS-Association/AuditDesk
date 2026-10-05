@@ -116,7 +116,7 @@ class FoundationTests(unittest.TestCase):
     def test_bulk_refresh_route_has_selection_and_accepts_multiple_ids(self):
         self.seed_asana_audits()
         page=self.get(role='reviewer').text
-        self.assertIn('Refresh selected from Bridge',page)
+        self.assertIn('Refresh selected from MLS',page)
         self.assertNotIn('Assign selected to',page)
         with patch('audit_app.application.refresh_audits',return_value={'refreshed':2,'skipped':0,'needs_attention':0}) as refresh:
             response=self.post('/audits/refresh',{'audit_ids':['1','3']},role='reviewer')
