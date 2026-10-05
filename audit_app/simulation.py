@@ -52,7 +52,7 @@ class DemoSender:
 
 def _listing(number, office, broker, entered, status="Active"):
     return {
-        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "listing_id": number,
+        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "agent_membership_class": "MEMBER", "listing_id": number,
         "mls_number": number,
         "status": status,
         "entry_timestamp": entered.isoformat(timespec="seconds"),

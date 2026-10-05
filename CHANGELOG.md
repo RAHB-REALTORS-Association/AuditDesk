@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — managed listing eligibility
+
+- Persist configurable membership-class and agent MLS-ID exclusions, defaulting to NL7, while keeping Cornerstone and NONMEM boundaries mandatory.
+- Apply the same exclusions to intake, selection, requests, refreshes, history and reports. Require a verified membership class before selecting or sending new requests.
+- Upgrade additively to schema 9 and provide membership-class verification for historical snapshots without sending mail.
+
 ## Unreleased — office calendar and response deadlines
 
 - Manage opening/closing times by weekday and explicit holidays/office closures under Hours & holidays.

@@ -2,20 +2,19 @@
 from .database import connect, init_db
 from .security import event
 
+from .eligibility import EligibilityRules, eligibility_reason, read_rules
+
 BOARD = 'Cornerstone'
 
 
-def is_eligible_listing(listing):
-    listing = dict(listing)
-    member = listing.get('agent_mls_id')
-    return (listing.get('originating_system_name') == BOARD and isinstance(member, str)
-            and bool(member.strip()) and member.strip().upper() != 'NONMEM')
+def is_eligible_listing(listing, rules=EligibilityRules(), *, require_class=False):
+    return eligibility_reason(listing, rules, require_class=require_class) is None
 
 
 def require_cornerstone_audit(db, audit_id):
-    row = db.execute('SELECT l.originating_system_name,l.agent_mls_id FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.id=?', (audit_id,)).fetchone()
-    if not row or not is_eligible_listing(row):
-        raise ValueError('Only verified Cornerstone member listings can be audited or followed up.')
+    row = db.execute('SELECT l.originating_system_name,l.agent_mls_id,l.agent_membership_class FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.id=?', (audit_id,)).fetchone()
+    if not row or not is_eligible_listing(row, read_rules(db)):
+        raise ValueError('Only eligible Cornerstone member listings can be audited or followed up.')
 
 
 def backfill_listing_boards(config, client=None):

@@ -38,14 +38,13 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         unverified = db.execute("SELECT count(*) FROM listings WHERE originating_system_name IS NULL OR (originating_system_name='Cornerstone' AND NULLIF(TRIM(agent_mls_id),'') IS NULL)").fetchone()[0]
         revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
         counts = {
-            "processed": db.execute("SELECT count(*) FROM listings WHERE originating_system_name='Cornerstone' AND NULLIF(TRIM(agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(agent_mls_id))<>'NONMEM'").fetchone()[0],
-            "selected": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM'").fetchone()[0],
-            "sent": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM' AND email_status='email_sent'").fetchone()[0],
-            "failed": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM' AND email_status IN ('email_failed','email_unknown')").fetchone()[0],
+            "processed": db.execute("SELECT count(*) FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)").fetchone()[0],
+            "selected": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)").fetchone()[0],
+            "sent": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND email_status='email_sent'").fetchone()[0],
+            "failed": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
         counts['overdue'] = db.execute("""SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id
-            WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL
-            AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM' AND a.email_status='email_sent'
+            WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND a.email_status='email_sent'
             AND a.outcome IS NULL AND a.response_received_at IS NULL
             AND julianday(COALESCE(a.response_due_at,datetime(a.email_sent_at,'+24 hours'))) <= julianday(?)""", (now.isoformat(),)).fetchone()[0]
         next_send = next_request_time(now, config.timezone, read_calendar(config, db)) if tab == 'audits' else None
@@ -54,10 +53,10 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         if tab == "audits":
             source = """SELECT a.*, l.mls_number, l.address, l.agent_email,
                 COALESCE(NULLIF(ar.display_name,''),ar.email) AS reviewer_name, ar.active AS active, ar.role AS role,
-                (SELECT count(*) FROM audits prior JOIN listings pl ON pl.id=prior.listing_id WHERE pl.originating_system_name='Cornerstone' AND NULLIF(TRIM(pl.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(pl.agent_mls_id))<>'NONMEM' AND prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
+                (SELECT count(*) FROM audits prior JOIN listings pl ON pl.id=prior.listing_id WHERE listing_allowed(pl.originating_system_name,pl.agent_mls_id,pl.agent_membership_class) AND prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
                 CASE WHEN a.outcome IS NOT NULL THEN 'completed' WHEN ar.active=1 THEN 'in_progress'
                   WHEN a.assignee_user_id IS NOT NULL THEN 'needs_reassignment' ELSE 'not_started' END AS work_status
-                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM'"""
+                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)"""
             source = f"""SELECT *, CASE WHEN outcome IS NOT NULL THEN 'completed'
                 WHEN response_received_at IS NOT NULL THEN 'received'
                 WHEN email_status='email_unknown' THEN 'unknown'
@@ -71,7 +70,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 'Agent':'agent_name','Intended recipients':'intended_to','Actual recipient':'actual_recipients',
                 'Mode / Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count','Broker response':'deadline_sort'}, 'selected_at')
         elif tab == "listings":
-            listings, list_page = query_page(db, tab, "SELECT * FROM listings WHERE originating_system_name='Cornerstone' AND NULLIF(TRIM(agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(agent_mls_id))<>'NONMEM'",
+            listings, list_page = query_page(db, tab, "SELECT * FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)",
                 ('mls_number','address','brokerage_name','agent_name'), 'processing_status',
                 {'MLS / Property':'mls_number','Entered':'entry_timestamp','Brokerage':'brokerage_name',
                  'Listing agent':'agent_name','Processing status':'processing_status'}, 'first_processed_at')

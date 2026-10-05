@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS listings (
   first_processed_at TEXT NOT NULL,
   processing_status TEXT NOT NULL,
   originating_system_name TEXT,
-  agent_mls_id TEXT
+  agent_mls_id TEXT,
+  agent_membership_class TEXT
 );
 CREATE TABLE IF NOT EXISTS audits (
   id INTEGER PRIMARY KEY,
@@ -75,6 +76,12 @@ CREATE TABLE IF NOT EXISTS workflow_settings (
   id INTEGER PRIMARY KEY CHECK(id = 1),
   broker_cooldown_days INTEGER NOT NULL CHECK(broker_cooldown_days BETWEEN 0 AND 365),
   window_hours INTEGER NOT NULL CHECK(window_hours BETWEEN 1 AND 168),
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS listing_eligibility (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  membership_classes TEXT NOT NULL,
+  agent_ids TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS office_calendar (
@@ -146,6 +153,14 @@ def connect(path, *, check_revision=True):
             revision = db.execute("SELECT COALESCE(max(id),0) FROM activity_events").fetchone()[0]
             if revision != g.expected_revision:
                 raise Conflict("Records changed while this form was open. Refresh before saving; your change was not applied.")
+        from .eligibility import eligibility_reason, read_rules
+        policy = []
+        def listing_allowed(board, agent_id, membership):
+            if not policy:
+                policy.append(read_rules(db))
+            return int(eligibility_reason({'originating_system_name': board, 'agent_mls_id': agent_id,
+                'agent_membership_class': membership}, policy[0]) is None)
+        db.create_function('listing_allowed', 3, listing_allowed)
         yield db
     finally:
         db.close()
@@ -170,6 +185,8 @@ def init_db(path, *, check_revision=True):
             db.execute("ALTER TABLE listings ADD COLUMN originating_system_name TEXT")
         if "agent_mls_id" not in columns:
             db.execute("ALTER TABLE listings ADD COLUMN agent_mls_id TEXT")
+        if "agent_membership_class" not in columns:
+            db.execute("ALTER TABLE listings ADD COLUMN agent_membership_class TEXT")
         template_columns = {row["name"] for row in db.execute("PRAGMA table_info(email_template)")}
         if "body_format" not in template_columns:
             db.execute("ALTER TABLE email_template ADD COLUMN body_format TEXT NOT NULL DEFAULT 'plain'")

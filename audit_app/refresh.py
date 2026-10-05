@@ -2,6 +2,7 @@
 import json
 
 from .board_scope import is_eligible_listing
+from .eligibility import eligibility_reason, read_rules
 from .bridge import BridgeClient, BridgeError
 from .database import connect
 from .emailer import EmailError, resolve_recipients
@@ -20,6 +21,7 @@ def refresh_audits(config, audit_ids, client=None):
         raise ValueError('Select between 1 and 20 audits to refresh from Bridge.')
     with job_lock(config.database_path):
         with connect(config.database_path) as db:
+            rules = read_rules(db)
             snapshots = []
             skipped = 0
             for audit_id in ids:
@@ -35,7 +37,7 @@ def refresh_audits(config, audit_ids, client=None):
                 snapshots.append((dict(audit),dict(listing)))
         if not snapshots:
             return {'refreshed':0,'skipped':skipped,'needs_attention':0}
-        client = client or BridgeClient(config)
+        client = client or BridgeClient(config, rules=rules)
         updates = []
         try:
             client.inspect_metadata()
@@ -45,8 +47,9 @@ def refresh_audits(config, audit_ids, client=None):
                     raise BridgeError('Bridge returned a different listing. No refresh was saved.')
                 error = None
                 try:
-                    if not is_eligible_listing(current):
-                        raise EmailError('This listing is no longer eligible for Cornerstone audits.')
+                    reason = eligibility_reason(current, rules, require_class=True)
+                    if reason:
+                        raise EmailError(reason)
                     to, cc, actual = resolve_recipients(current, config)
                 except EmailError as exc:
                     error = str(exc)
@@ -59,6 +62,8 @@ def refresh_audits(config, audit_ids, client=None):
         with connect(config.database_path) as db:
             if not db.in_transaction:
                 db.execute('BEGIN IMMEDIATE')
+            if read_rules(db) != rules:
+                raise ValueError('Eligibility settings changed during refresh. Reload and try again.')
             for audit, previous, current, to, cc, actual, error in updates:
                 now_audit = db.execute('SELECT * FROM audits WHERE id=?',(audit['id'],)).fetchone()
                 now_listing = db.execute('SELECT * FROM listings WHERE id=?',(previous['id'],)).fetchone()

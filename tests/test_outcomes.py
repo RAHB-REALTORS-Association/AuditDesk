@@ -21,7 +21,7 @@ NOW = datetime(2026, 9, 24, 13, 0, tzinfo=timezone.utc)
 
 def listing(number):
     return {
-        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "listing_id": number, "mls_number": number, "status": "Active",
+        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "agent_membership_class": "MEMBER", "listing_id": number, "mls_number": number, "status": "Active",
         "entry_timestamp": (NOW - timedelta(hours=1)).isoformat(),
         "address": "42 Main & King", "agent_id": "agent", "agent_name": "Agent Name",
         "agent_email": "agent@example.com", "brokerage_id": "office",

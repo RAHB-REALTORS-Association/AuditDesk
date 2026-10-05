@@ -11,6 +11,7 @@ from email.utils import parsedate_to_datetime
 
 
 from .board_scope import is_eligible_listing
+from .eligibility import EligibilityRules, code
 
 
 LOG = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def office_address(office, fields):
 
 
 class BridgeClient:
-    def __init__(self, config):
+    def __init__(self, config, rules=None):
         if config.env == "development":
             raise BridgeError("Live Bridge access is unavailable in development")
         self.config = config
@@ -54,6 +55,7 @@ class BridgeClient:
             raise BridgeError("BRIDGE_BASE_URL must use HTTPS and include the dataset ID")
         if not config.bridge_key:
             raise BridgeError("BRIDGE_API_KEY is required")
+        self.rules = rules or EligibilityRules()
         self.properties = {}
         self.members = {}
         self.offices = {}
@@ -136,8 +138,10 @@ class BridgeClient:
         fields = self.config.field_map["Property"]
         start_text = start.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         end_text = end.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        excluded_ids = tuple(dict.fromkeys(('NONMEM', *self.rules.agent_ids)))
+        exclusions = ' and '.join(fields['agent_mls_id'] + " ne '" + value.replace("'", "''") + "'" for value in excluded_ids)
         params = {
-            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {fields['agent_mls_id']} ne 'NONMEM' and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
+            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {exclusions} and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
             "$select": ",".join(dict.fromkeys(fields.values())),
             "$top": 200,
             "$orderby": fields["entry_timestamp"] + " asc",
@@ -148,7 +152,7 @@ class BridgeClient:
             if not isinstance(board, str) or board.strip() != 'Cornerstone':
                 continue
             listing['originating_system_name'] = board.strip()
-            if not is_eligible_listing(listing):
+            if not is_eligible_listing(listing, self.rules):
                 continue
             listing['agent_mls_id'] = listing['agent_mls_id'].strip()
             if not listing["listing_id"] or not listing["entry_timestamp"]:
@@ -158,7 +162,9 @@ class BridgeClient:
                 raise BridgeError("Bridge entry timestamp has no timezone")
             if listing["status"] != "Active" or not start <= entered < end:
                 continue
-            yield self._enrich_listing(listing)
+            enriched = self._enrich_listing(listing)
+            if is_eligible_listing(enriched, self.rules):
+                yield enriched
 
     def listing_by_key(self, key):
         """Read a specific listing independently of its age or current status."""
@@ -184,7 +190,12 @@ class BridgeClient:
         return self._enrich_listing(listing)
 
     def _enrich_listing(self, listing):
-        if not is_eligible_listing(listing):
+        member_map = self.config.field_map['Member']
+        agent = {}
+        if is_eligible_listing(listing, self.rules):
+            agent = self._one('Member', listing.get('agent_id'), self.members)
+        listing['agent_membership_class'] = code(agent.get(member_map['membership_class'])) or None
+        if not is_eligible_listing(listing, self.rules, require_class=True):
             listing['brokerage_id'] = listing.pop('office_id', None)
             listing['brokerage_name'] = listing.pop('office_name', None)
             for name in ('brokerage_email','brokerage_address','broker_id','broker_name','broker_first_name','broker_email'):
@@ -195,7 +206,6 @@ class BridgeClient:
         office = self._one("Office", listing.get("office_id"), self.offices)
         office_map = self.config.field_map["Office"]
         member_map = self.config.field_map["Member"]
-        agent = self._one("Member", listing.get("agent_id"), self.members)
         broker_id = office.get(office_map["broker_id"])
         broker = self._one("Member", broker_id, self.members)
         listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])

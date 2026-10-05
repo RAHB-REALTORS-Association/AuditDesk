@@ -25,7 +25,7 @@ def daily_audit_report(config, today=None, days=90):
             "listings": 0, "audited": 0, "runs": []} for offset in range(days)}
     with connect(config.database_path) as db:
         listings = db.execute("""SELECT l.first_processed_at, a.id AS audit_id FROM listings l
-            LEFT JOIN audits a ON a.listing_id=l.id WHERE l.originating_system_name='Cornerstone' AND NULLIF(TRIM(l.agent_mls_id),'') IS NOT NULL AND UPPER(TRIM(l.agent_mls_id))<>'NONMEM'""")
+            LEFT JOIN audits a ON a.listing_id=l.id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)""")
         for listing in listings:
             day = _day(listing["first_processed_at"], zone)
             if first_day <= day <= today:
