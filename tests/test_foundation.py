@@ -70,6 +70,33 @@ class FoundationTests(unittest.TestCase):
         return client.post(path, data=data, base_url=self.config.public_url,
                            headers={'Cf-Access-Jwt-Assertion':self.token(role), 'Origin':self.config.public_url, **headers})
 
+    def test_eligibility_management_preview_save_validation_and_roles(self):
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET agent_membership_class='MEMBER'")
+            db.commit()
+        form = {'membership_classes':'NL7, MEMBER', 'agent_ids':'', 'action':'preview'}
+        self.assertEqual(self.get('/?tab=eligibility', role='reviewer').status_code, 403)
+        self.assertEqual(self.post('/manage/eligibility', form, role='reviewer').status_code, 403)
+        with connect(self.config.database_path) as db:
+            before = db.execute('SELECT count(*) FROM activity_events').fetchone()[0]
+        preview = self.post('/manage/eligibility', form, role='manager', page='/?tab=eligibility')
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn('Preview of unsaved rules', preview.text)
+        self.assertIn('Excluded membership class: MEMBER', preview.text)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM activity_events').fetchone()[0], before)
+            self.assertEqual(db.execute('SELECT count(*) FROM listing_eligibility').fetchone()[0], 0)
+        invalid = self.post('/manage/eligibility', {**form,'membership_classes':"NL7'",'action':'save'}, page='/?tab=eligibility')
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('NL7&#x27;', invalid.text)
+        self.assertIn('use up to 50 codes', invalid.text)
+        self.assertEqual(self.post('/manage/eligibility', {**form,'action':'save'}, role='manager', page='/?tab=eligibility').status_code, 303)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 3)
+            self.assertEqual(db.execute('SELECT actor FROM activity_events ORDER BY id DESC LIMIT 1').fetchone()[0], 'manager')
+        self.assertIn('No records match these filters', self.get('/?tab=audits').text)
+
     def test_delete_person_revokes_access_clears_assignments_and_preserves_audits(self):
         self.seed_asana_audits()
         with connect(self.config.database_path) as db:

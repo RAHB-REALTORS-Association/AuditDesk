@@ -26,6 +26,7 @@ from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .refresh import refresh_audits
+from .eligibility import rules_from_form, save_rules
 from .office_calendar import save_calendar
 from .responses import record_response
 from .asana import save_task_link
@@ -233,6 +234,21 @@ def create_app(config=None, verifier=None):
     def workflow_settings():
         save_workflow_settings(config, request.form)
         return done("manage", "Workflow settings saved for future runs.")
+
+    @app.post('/manage/eligibility')
+    @require('settings.manage')
+    def listing_eligibility():
+        try:
+            rules_from_form(request.form)
+            action = request.form.get('action', '')
+            if action == 'preview':
+                return web.render(config, 'eligibility', form_values=request.form, eligibility_preview=True)
+            if action != 'save':
+                raise ValueError('Choose Preview rules or Save eligibility rules.')
+            save_rules(config, request.form)
+        except ValueError as error:
+            return web.render(config, 'eligibility', form_values=request.form, error=str(error)), 400
+        return done('eligibility', 'Eligibility rules saved. Queued requests will use these rules before sending.')
 
     @app.post('/manage/calendar')
     @require('settings.manage')
