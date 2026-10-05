@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from audit_app.bridge import BridgeClient
+from audit_app.bridge import BridgeClient, BridgeError
 from audit_app.config import load_config
 from audit_app.database import connect, init_db
 from audit_app.eligibility import eligibility_reason, read_rules, rules_from_form, save_rules
@@ -27,12 +27,19 @@ class EligibilityTests(unittest.TestCase):
 
     def test_super_subscribers_are_excluded_even_with_a_member_mls_id(self):
         subscriber = {**listing('subscriber'), 'agent_membership_class': ' nl7 '}
-        unknown = {**listing('unknown'), 'agent_membership_class': None}
-        result = run_job(self.config, FakeClient([subscriber, unknown, listing('member')]), random.Random(1), NOW)
-        self.assertEqual((result['new'], result['selected']), (2, 1))
+        result = run_job(self.config, FakeClient([subscriber, listing('member')]), random.Random(1), NOW)
+        self.assertEqual((result['new'], result['selected']), (1, 1))
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 1)
         self.assertIn('NL7', eligibility_reason(subscriber))
+
+    def test_unknown_intake_fails_without_processing_or_selecting_any_listing(self):
+        unknown = {**listing('unknown'), 'agent_membership_class': None}
+        with self.assertRaisesRegex(BridgeError, 'membership class'):
+            run_job(self.config, FakeClient([listing('member'), unknown]), random.Random(1), NOW)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM listings').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT status FROM runs').fetchone()[0], 'failed')
 
     def test_save_validation_normalization_history_and_restart(self):
         saved = save_rules(self.config, {'membership_classes': 'nl7, NL7\nTEST', 'agent_ids': 'abc-1'})
@@ -85,6 +92,26 @@ class EligibilityTests(unittest.TestCase):
         self.assertIsNone(current['broker_email'])
         self.assertEqual(client._one.call_count, 1)
         self.assertEqual(client._one.call_args.args[0], 'Member')
+
+    def test_bridge_query_uses_saved_agent_exclusions_and_checks_returned_rows(self):
+        rules = save_rules(self.config, {'membership_classes':'NL7', 'agent_ids':'blocked-agent'})
+        client = BridgeClient(self.config, rules=rules)
+        client.inspect_metadata = Mock()
+        client._collection = Mock(return_value=iter([{
+            'ListingKey':'blocked', 'OriginatingSystemName':'Cornerstone', 'ListAgentMlsId':' BLOCKED-agent '}]))
+        client._one = Mock()
+        self.assertEqual(list(client.active_new_listings(NOW.replace(hour=0), NOW)), [])
+        self.assertIn("ListAgentMlsId ne 'BLOCKED-AGENT'", client._collection.call_args.args[1]['$filter'])
+        client._one.assert_not_called()
+
+    def test_custom_field_map_must_supply_membership_class(self):
+        mapping = {resource: dict(fields) for resource, fields in self.config.field_map.items()}
+        del mapping['Member']['membership_class']
+        client = BridgeClient(replace(self.config, field_map=mapping))
+        client._get = Mock()
+        with self.assertRaisesRegex(BridgeError, 'must configure membership_class'):
+            client.inspect_metadata()
+        client._get.assert_not_called()
 
     def test_refresh_applies_rules_and_rejects_concurrent_rule_change(self):
         run_job(self.config, FakeClient([listing('1')]), random.Random(1), NOW)

@@ -93,6 +93,8 @@ class BridgeClient:
             time.sleep(delay)
 
     def inspect_metadata(self):
+        if not self.config.field_map.get('Member', {}).get('membership_class'):
+            raise BridgeError('Member field map must configure membership_class before live intake.')
         root = ET.fromstring(self._get(self.base + "/$metadata"))
         namespace = {"e": "http://docs.oasis-open.org/odata/ns/edm"}
         result = {}
@@ -106,6 +108,9 @@ class BridgeClient:
             missing = [field for field in mapping.values() if field not in result[resource]]
             if missing:
                 raise BridgeError(f"{resource} mapping has fields absent from Bridge metadata: {', '.join(missing)}")
+        membership_field = self.config.field_map['Member']['membership_class']
+        if result['Member'][membership_field] != 'Edm.String':
+            raise BridgeError('Member membership_class must map to an Edm.String field.')
         entry_field = self.config.field_map["Property"]["entry_timestamp"]
         if result["Property"][entry_field] != "Edm.DateTimeOffset":
             raise BridgeError(f"{entry_field} is not an Edm.DateTimeOffset field")
