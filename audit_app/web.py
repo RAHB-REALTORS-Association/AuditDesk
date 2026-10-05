@@ -10,6 +10,7 @@ from .asana import follow_up
 from .assignment import can_audit, eligible_assignees
 from .database import connect
 from .office_calendar import next_request_time, read_calendar
+from .views.actions import action_button, action_link
 from .views.eligibility import eligibility_view
 from .views.deadlines import deadline_view, response_form
 from .lists import query_page
@@ -164,18 +165,19 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             headings = '<th class="audit-select"><input type="checkbox" data-select-all aria-label="Select all displayed audits"></th>' + headings
         rows = ""
         for r in audits:
-            retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}"><button type="submit">Retry email</button></form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
-            outcome = f'<a href="/?tab=outcome&id={r["id"]}">Record result</a>' if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
+            retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}">{action_button('retry', 'Retry email')}</form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
+            outcome = action_link('result', 'Record result', f'/?tab=outcome&id={r["id"]}') if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
             if r["outcome"] == "failed" and allowed("audits.result"):
                 task_url = r['asana_task_url'] or follow_up(config, r)[2]
                 task_label = 'Open Asana task' if r['asana_task_url'] else 'Create Asana task'
-                retry += f'<div class="audit-asana-actions"><a class="asana-task-action" href="{esc(task_url)}" target="_blank" rel="noopener noreferrer" title="{esc("Open the linked task" if r["asana_task_url"] else "Open a prefilled draft; review and create the task in Asana")}">{task_label} ↗</a><a class="asana-details-action" href="/?tab=outcome&id={r["id"]}#asana-heading">{("Task link & details" if r["asana_task_url"] else "Link task / copy details")}</a></div>'
+                retry += action_link('asana', task_label, task_url, external=True)
+                retry += action_link('details', 'Task link & details' if r['asana_task_url'] else 'Link task / copy details', f'/?tab=outcome&id={r["id"]}#asana-heading')
             if outcome.startswith("<a "):
                 retry = outcome + retry
                 outcome = "—"
             if r["outcome"] == "failed" and r["failure_email_status"] in {"email_pending", "email_failed"} and config.test_window_open() and allowed("email.retry"):
                 failure_token = retry_token(config, "failure:" + str(r["id"]))
-                retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}"><button type="submit">Send failed notice</button></form>'
+                retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}">{action_button('notice', 'Send failed notice')}</form>'
             retry += response_form(config, r)
             response = deadline_view(config, r, now=now, next_send=next_send)
             mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else '<span class="mode-prod">LIVE</span>'
@@ -193,7 +195,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 assignment = ""
             reviewer_label = r["reviewer_name"] or ""
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
-            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td class="history-response">{response}</td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td>{retry}</td></tr>'
+            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td class="history-response">{response}</td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td class="history-actions"><div class="row-actions">{retry}</div></td></tr>'
         title, subtitle = "Audit history", "Cornerstone member listings only · Selection, recipient routing, and email delivery."
     if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery", "calendar", "eligibility"}:
         if not rows:

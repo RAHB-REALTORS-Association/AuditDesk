@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 
 from ..security import allowed
+from .actions import action_button
 from .common import badge, esc, local_time, retry_token
 
 
@@ -35,5 +36,5 @@ def response_form(config, audit, detailed=False):
         controls = '<input type="hidden" name="action" value="reopen"><button type="submit" data-confirm="Clear the recorded response receipt and resume the response timer?">Reopen response timer</button>'
     else:
         controls = ('<label>Response received at (office time)<input type="datetime-local" name="received_at"></label><p class="form-help">Leave blank to use now. Enter the actual receipt time if recording it later.</p>' if detailed else '')
-        controls += '<input type="hidden" name="action" value="received"><button type="submit">Response received</button>'
+        controls += '<input type="hidden" name="action" value="received">' + ('<button type="submit">Response received</button>' if detailed else action_button('response', 'Response received'))
     return f'<form method="post" action="/audits/{audit["id"]}/response" class="response-form"><input type="hidden" name="token" value="{retry_token(config, "response")}">{controls}</form>'

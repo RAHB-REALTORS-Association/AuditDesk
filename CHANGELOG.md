@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — audit row actions
+
+- Replace text-heavy audit actions with labelled icons, revealed on row hover or keyboard focus and kept visible on touch devices. Preserve the existing forms, permissions and delivery behavior.
+
 ## Unreleased — managed listing eligibility
 
 - Add Manage → Listing eligibility with validated exclusions, role enforcement, unsaved-rule previews and exclusion reasons.
