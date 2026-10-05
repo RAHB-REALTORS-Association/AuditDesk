@@ -44,7 +44,9 @@ try:
            '-e','COOLIFY_URL=auditdesk-pr1.oncornerstone.app',
            '-e','DATABASE_PATH=/app/data/audit.sqlite3',
            '-e','EMAIL_ENABLED=true','-e','SCHEDULER_ENABLED=true',
-           '-e','BRIDGE_API_KEY=ignored-sentinel','-e','SENDGRID_API_KEY=ignored-sentinel',image)
+           '-e','BRIDGE_API_KEY=ignored-sentinel','-e','RESO_API_KEY=ignored-sentinel',
+           '-e','RESO_BASE_URL=https://mls.example.invalid/odata',
+           '-e','SENDGRID_API_KEY=ignored-sentinel',image)
     ready()
     preview=docker('exec',name,'python','-c',"import urllib.request; r=urllib.request.Request('http://127.0.0.1:8765/',headers={'Host':'auditdesk-pr1.oncornerstone.app'}); print(urllib.request.urlopen(r).read().decode())")
     assert 'DEVELOPMENT SANDBOX' in preview and 'DEMO-1' in preview

@@ -60,6 +60,11 @@ def development_config(config):
                    scheduler_enabled=False, email_enabled=False, test_end_at=None)
 
 
+def integration_setting(name, legacy, default=''):
+    """New provider-neutral names take precedence, including explicit empties."""
+    return os.environ[name] if name in os.environ else os.getenv(legacy, default)
+
+
 def load_config():
     env = os.getenv("APP_ENV", "development").lower()
     if env not in {"development", "test", "production"}:
@@ -73,7 +78,7 @@ def load_config():
         if not preview.hostname or preview.username or preview.path not in {"", "/"}:
             raise ValueError("Development PUBLIC_BASE_URL=auto requires a valid COOLIFY_URL")
         public_url = "https://" + preview.netloc
-    map_path = Path(os.getenv("BRIDGE_FIELD_MAP", "bridge_fields.json"))
+    map_path = Path(integration_setting("RESO_FIELD_MAP", "BRIDGE_FIELD_MAP", "bridge_fields.json"))
     mapping = json.loads(map_path.read_text())
     zone = os.getenv("APP_TIMEZONE", "America/Toronto")
     ZoneInfo(zone)
@@ -86,9 +91,9 @@ def load_config():
         database_path=os.path.expanduser(os.getenv("DATABASE_PATH", "./data/audit.sqlite3")),
         host=os.getenv("APP_HOST", "127.0.0.1"),
         port=int(os.getenv("APP_PORT", "8765")),
-        bridge_base_url=os.getenv("BRIDGE_BASE_URL", ""),
-        bridge_key=os.getenv("BRIDGE_API_KEY", ""),
-        bridge_auth_mode=os.getenv("BRIDGE_AUTH_MODE", "bearer"),
+        bridge_base_url=integration_setting("RESO_BASE_URL", "BRIDGE_BASE_URL"),
+        bridge_key=integration_setting("RESO_API_KEY", "BRIDGE_API_KEY"),
+        bridge_auth_mode=integration_setting("RESO_AUTH_MODE", "BRIDGE_AUTH_MODE", "bearer"),
         field_map=mapping,
         sendgrid_key=os.getenv("SENDGRID_API_KEY", ""),
         from_address=os.getenv("EMAIL_FROM_ADDRESS", ""),
@@ -116,7 +121,7 @@ def load_config():
     if config.window_hours <= 0 or config.brokerage_cooldown_days < 0 or config.broker_cooldown_days < 0:
         raise ValueError("Window and cooldown settings are invalid")
     if config.bridge_auth_mode not in {"bearer", "query"}:
-        raise ValueError("BRIDGE_AUTH_MODE must be bearer or query")
+        raise ValueError("RESO_AUTH_MODE must be bearer or query")
     if config.env == "production" and config.auth_mode != "cloudflare":
         raise ValueError("Production requires AUTH_MODE=cloudflare")
     if config.env == "production" and config.email_enabled and not all((config.bridge_key, config.sendgrid_key, config.from_address)):

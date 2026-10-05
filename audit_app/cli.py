@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timezone
 
-from .bridge import BridgeClient
+from .bridge import ResoClient
 from .config import load_config
 from .job import run_job
 from .runtime import serve
@@ -38,14 +38,14 @@ class JsonFormatter(logging.Formatter):
 
 def main():
     parser = argparse.ArgumentParser(description="MLS Audit Desk")
-    parser.add_argument("command", choices=("inspect-bridge", "backfill-listing-boards", "backfill-office-addresses", "run", "serve", "simulate", "backup", "restore"))
+    parser.add_argument("command", choices=("inspect-reso", "inspect-bridge", "backfill-membership-classes", "backfill-listing-boards", "backfill-office-addresses", "run", "serve", "simulate", "backup", "restore"))
     parser.add_argument("--output", help="New backup destination")
     parser.add_argument("--input", help="Backup to restore while the service is stopped")
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
     load_dotenv()
     config = load_config()
-    if config.env == "development" and args.command in {"backup", "restore", "backfill-listing-boards", "backfill-office-addresses", "inspect-bridge"}:
+    if config.env == "development" and args.command in {"backup", "restore", "backfill-listing-boards", "backfill-office-addresses", "backfill-membership-classes", "inspect-reso", "inspect-bridge"}:
         parser.error("Development uses disposable synthetic data; live intake and backup/restore commands are unavailable")
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
@@ -60,10 +60,13 @@ def main():
         if not args.input:
             parser.error("restore requires --input")
         print(restore(config, args.input, args.confirm))
-    elif args.command == "inspect-bridge":
-        metadata = BridgeClient(config).inspect_metadata()
+    elif args.command in {"inspect-reso", "inspect-bridge"}:
+        metadata = ResoClient(config).inspect_metadata()
         report = {resource: {name: {"field": field, "type": metadata[resource][field]} for name, field in mapping.items()} for resource, mapping in config.field_map.items()}
         print(json.dumps(report, indent=2))
+    elif args.command == 'backfill-membership-classes':
+        from .eligibility_backfill import backfill_membership_classes
+        print(json.dumps(backfill_membership_classes(config)))
     elif args.command == 'backfill-listing-boards':
         from .board_scope import backfill_listing_boards
         print(json.dumps(backfill_listing_boards(config)))

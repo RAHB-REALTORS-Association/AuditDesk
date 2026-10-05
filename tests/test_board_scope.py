@@ -43,7 +43,7 @@ class BoardScopeTests(unittest.TestCase):
                     fields['entry_timestamp']:listing(key)['entry_timestamp'],fields['originating_system_name']:board,fields['agent_mls_id']:'MEMBER'}
         client.inspect_metadata=Mock()
         client._collection=Mock(return_value=iter([raw('BRREA','foreign'),raw(None,'unknown'),raw('Cornerstone','ours')]))
-        client._one=Mock(return_value={})
+        client._one=Mock(return_value={"MemberMlsSecurityClass":"MEMBER"})
         rows=list(client.active_new_listings(NOW.replace(hour=0),NOW))
         self.assertEqual([row['listing_id'] for row in rows],['ours'])
         params=client._collection.call_args[0][1]
@@ -101,7 +101,7 @@ class BoardScopeTests(unittest.TestCase):
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
             self.assertIsNone(db.execute('SELECT agent_mls_id FROM listings').fetchone()[0])
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
         client=Mock();client._collection.return_value=iter([{'ListingKey':'old','OriginatingSystemName':'Cornerstone','ListAgentMlsId':'NONMEM'}])
         with patch('audit_app.job.send_email') as sender:
             result=backfill_listing_boards(self.config,client)
@@ -120,4 +120,4 @@ class BoardScopeTests(unittest.TestCase):
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
             self.assertIsNone(db.execute('SELECT originating_system_name FROM listings').fetchone()[0])
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)

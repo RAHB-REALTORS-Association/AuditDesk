@@ -1,12 +1,15 @@
 # AuditDesk
 
-AuditDesk is Cornerstone's internal MLS paperwork audit application. It selects new Active Cornerstone listings from Bridge, requests paperwork through SendGrid, and gives staff one place to assign reviews, record results, and report on audit activity.
+AuditDesk is Cornerstone's internal MLS paperwork audit application. It selects new Active Cornerstone listings from the MLS, requests paperwork through SendGrid, and gives staff one place to assign reviews, record results, and report on audit activity.
+
+Listing data comes through the [RESO Web API standard](https://www.reso.org/reso-web-api/). Bridge is the current ITSO provider; another compatible MLS service can be configured with its endpoint, credentials and field mapping. The default mapping and eligibility rules reflect Cornerstone’s current dataset.
 
 It runs as one Python service with SQLite and a persistent volume. Cloudflare Access authenticates staff; AuditDesk manages their roles and records their changes.
 
 ## What it does
 
 - Imports only Active listings with `OriginatingSystemName = Cornerstone`; other boards, `NONMEM` agents, and missing board/agent MLS identifiers cannot be audited
+- Manages membership-class (including NL7 super subscribers) and agent MLS-ID exclusions with a stored-data preview
 - Selects audits using a configurable lottery, brokerage balancing, and broker/brokerage cooldowns
 - Sends audit requests and failed-audit notices, with delivery history and controlled retries
 - Assigns reviewers and tracks work from not started to completed
@@ -20,7 +23,7 @@ It runs as one Python service with SQLite and a persistent volume. Cloudflare Ac
 
 ```mermaid
 flowchart LR
-    Bridge[Bridge MLS API] -->|Active listing intake| App[AuditDesk]
+    MLS[MLS RESO Web API] -->|Active listing intake| App[AuditDesk]
     Staff[Staff browser] -->|Cloudflare Access identity| App
     App --> DB[(SQLite on persistent volume)]
     App -->|Requests and failure notices| SendGrid[SendGrid]
@@ -41,7 +44,7 @@ Active accounts whose role permits auditing appear in assignment dropdowns. IT m
 ## Requirements
 
 - Python 3.14 for local development, or Docker for the deployment runtime
-- Bridge and SendGrid credentials for live intake and delivery
+- MLS Web API and SendGrid credentials for live intake and delivery
 - Cloudflare Access and an HTTPS origin for test/production
 - One application instance and a persistent `/app/data` mount for test/production
 
@@ -97,7 +100,7 @@ scripts/           Container verification tools
 tests/             Synthetic workflow and HTTP regression tests
 .github/           CI, image release workflow, and pull request template
 main.py            Existing CLI entry point
-bridge_fields.json Bridge dataset field mappings
+bridge_fields.json RESO/MLS field mappings (historical filename)
 ```
 
 The [architecture guide](docs/ARCHITECTURE.md) maps the modules, data ownership, and delivery lifecycle.

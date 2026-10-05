@@ -17,7 +17,8 @@
     "key": "MemberKey",
     "name": "MemberFullName",
     "first_name": "MemberFirstName",
-    "email": "MemberEmail"
+    "email": "MemberEmail",
+    "membership_class": "MemberMlsSecurityClass"
   },
   "Office": {
     "key": "OfficeKey",

@@ -26,6 +26,7 @@ from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import deliver_audit
 from .refresh import refresh_audits
+from .eligibility import rules_from_form, save_rules
 from .office_calendar import save_calendar
 from .responses import record_response
 from .asana import save_task_link
@@ -234,6 +235,21 @@ def create_app(config=None, verifier=None):
         save_workflow_settings(config, request.form)
         return done("manage", "Workflow settings saved for future runs.")
 
+    @app.post('/manage/eligibility')
+    @require('settings.manage')
+    def listing_eligibility():
+        try:
+            rules_from_form(request.form)
+            action = request.form.get('action', '')
+            if action == 'preview':
+                return web.render(config, 'eligibility', form_values=request.form, eligibility_preview=True)
+            if action != 'save':
+                raise ValueError('Choose Preview rules or Save eligibility rules.')
+            save_rules(config, request.form)
+        except ValueError as error:
+            return web.render(config, 'eligibility', form_values=request.form, error=str(error)), 400
+        return done('eligibility', 'Eligibility rules saved. Queued requests will use these rules before sending.')
+
     @app.post('/manage/calendar')
     @require('settings.manage')
     def office_calendar():
@@ -344,9 +360,9 @@ def create_app(config=None, verifier=None):
     def refresh_selected():
         ids = request.form.getlist('audit_ids')
         if not ids or len(ids) > 20 or any(not item.isascii() or not item.isdigit() for item in ids):
-            abort(400, 'Select between 1 and 20 audits to refresh from Bridge.')
+            abort(400, 'Select between 1 and 20 audits to refresh from MLS.')
         result = refresh_audits(config, [int(item) for item in ids])
-        return done('audits', f"Refreshed {result['refreshed']} audits from Bridge. {result['skipped']} skipped (already sent or completed); {result['needs_attention']} still need attention. No email sent. Use Retry email when ready.")
+        return done('audits', f"Refreshed {result['refreshed']} audits from the MLS. {result['skipped']} skipped (already sent or completed); {result['needs_attention']} still need attention. No email sent. Use Retry email when ready.")
 
     @app.post("/retry/<int:audit_id>")
     @app.post("/failure-retry/<int:audit_id>")

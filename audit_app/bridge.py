@@ -1,3 +1,4 @@
+"""RESO Web API/OData client; this module name is retained for compatibility."""
 import json
 import logging
 import math
@@ -11,6 +12,7 @@ from email.utils import parsedate_to_datetime
 
 
 from .board_scope import is_eligible_listing
+from .eligibility import EligibilityRules, code
 
 
 LOG = logging.getLogger(__name__)
@@ -33,36 +35,37 @@ def retry_after_seconds(value, now=None):
             return None
 
 
-class BridgeError(Exception):
+class ResoError(Exception):
     pass
 
 
 def office_address(office, fields):
-    """Format the physical address supplied by a Bridge Office profile."""
+    """Format the physical address supplied by an MLS Office profile."""
     street = [str(office.get(fields[key]) or "").strip() for key in ("address1", "address2")]
     locality = [str(office.get(fields[key]) or "").strip() for key in ("city", "province", "postal_code")]
     return ", ".join(part for part in (*street, " ".join(part for part in locality if part)) if part) or None
 
 
-class BridgeClient:
-    def __init__(self, config):
+class ResoClient:
+    def __init__(self, config, rules=None):
         if config.env == "development":
-            raise BridgeError("Live Bridge access is unavailable in development")
+            raise ResoError("Live RESO Web API access is unavailable in development")
         self.config = config
         self.base = config.bridge_base_url.rstrip("/")
         if not self.base.startswith("https://"):
-            raise BridgeError("BRIDGE_BASE_URL must use HTTPS and include the dataset ID")
+            raise ResoError("RESO_BASE_URL must use HTTPS and identify the MLS OData service root")
         if not config.bridge_key:
-            raise BridgeError("BRIDGE_API_KEY is required")
+            raise ResoError("RESO_API_KEY is required (legacy BRIDGE_API_KEY is also accepted)")
+        self.rules = rules or EligibilityRules()
         self.properties = {}
         self.members = {}
         self.offices = {}
 
     def _get(self, url):
         if self.config.env == "development":
-            raise BridgeError("Live Bridge access is unavailable in development")
+            raise ResoError("Live RESO Web API access is unavailable in development")
         if not url.startswith(self.base + "/"):
-            raise BridgeError("Bridge pagination URL left the configured dataset")
+            raise ResoError("RESO Web API pagination URL left the configured MLS service root")
         headers = {"Accept": "application/json"}
         if self.config.bridge_auth_mode == "bearer":
             headers["Authorization"] = "Bearer " + self.config.bridge_key
@@ -79,18 +82,20 @@ class BridgeClient:
             except urllib.error.HTTPError as exc:
                 exc.close()
                 if exc.code not in (429, 500, 502, 503, 504) or attempt == 5:
-                    raise BridgeError(f"Bridge returned HTTP {exc.code}") from None
+                    raise ResoError(f"MLS Web API returned HTTP {exc.code}") from None
                 requested = retry_after_seconds(exc.headers.get("Retry-After") if exc.headers else None)
                 delay = requested if requested is not None else (min(60 * 2 ** attempt, 900) if exc.code == 429 else delay)
                 if delay > 900:
-                    raise BridgeError("Bridge requires a retry delay above 15 minutes; retry intake later") from None
-                LOG.warning("bridge_retry status=%s delay_seconds=%s", exc.code, delay)
+                    raise ResoError("MLS Web API requires a retry delay above 15 minutes; retry intake later") from None
+                LOG.warning("reso_retry status=%s delay_seconds=%s", exc.code, delay)
             except (urllib.error.URLError, TimeoutError):
                 if attempt == 5:
-                    raise BridgeError("Bridge request failed after retries") from None
+                    raise ResoError("MLS Web API request failed after retries") from None
             time.sleep(delay)
 
     def inspect_metadata(self):
+        if not self.config.field_map.get('Member', {}).get('membership_class'):
+            raise ResoError('Member field map must configure membership_class before live intake.')
         root = ET.fromstring(self._get(self.base + "/$metadata"))
         namespace = {"e": "http://docs.oasis-open.org/odata/ns/edm"}
         result = {}
@@ -100,13 +105,16 @@ class BridgeClient:
                 result[name] = {p.attrib["Name"]: p.attrib.get("Type", "") for p in entity.findall("e:Property", namespace)}
         for resource, mapping in self.config.field_map.items():
             if resource not in result:
-                raise BridgeError(f"Bridge metadata has no {resource} resource")
+                raise ResoError(f"RESO Web API metadata has no {resource} resource")
             missing = [field for field in mapping.values() if field not in result[resource]]
             if missing:
-                raise BridgeError(f"{resource} mapping has fields absent from Bridge metadata: {', '.join(missing)}")
+                raise ResoError(f"{resource} mapping has fields absent from RESO Web API metadata: {', '.join(missing)}")
+        membership_field = self.config.field_map['Member']['membership_class']
+        if result['Member'][membership_field] != 'Edm.String':
+            raise ResoError('Member membership_class must map to an Edm.String field.')
         entry_field = self.config.field_map["Property"]["entry_timestamp"]
         if result["Property"][entry_field] != "Edm.DateTimeOffset":
-            raise BridgeError(f"{entry_field} is not an Edm.DateTimeOffset field")
+            raise ResoError(f"{entry_field} is not an Edm.DateTimeOffset field")
         return result
 
     def _collection(self, resource, params):
@@ -115,7 +123,7 @@ class BridgeClient:
             try:
                 data = json.loads(self._get(url))
             except (ValueError, KeyError):
-                raise BridgeError("Bridge returned invalid JSON") from None
+                raise ResoError("MLS Web API returned invalid JSON") from None
             for row in data.get("value", []):
                 yield row
             next_url = data.get("@odata.nextLink")
@@ -136,8 +144,10 @@ class BridgeClient:
         fields = self.config.field_map["Property"]
         start_text = start.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         end_text = end.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        excluded_ids = tuple(dict.fromkeys(('NONMEM', *self.rules.agent_ids)))
+        exclusions = ' and '.join(fields['agent_mls_id'] + " ne '" + value.replace("'", "''") + "'" for value in excluded_ids)
         params = {
-            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {fields['agent_mls_id']} ne 'NONMEM' and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
+            "$filter": f"{fields['originating_system_name']} eq 'Cornerstone' and {exclusions} and {fields['status']} eq 'Active' and {fields['entry_timestamp']} ge {start_text} and {fields['entry_timestamp']} lt {end_text}",
             "$select": ",".join(dict.fromkeys(fields.values())),
             "$top": 200,
             "$orderby": fields["entry_timestamp"] + " asc",
@@ -148,17 +158,19 @@ class BridgeClient:
             if not isinstance(board, str) or board.strip() != 'Cornerstone':
                 continue
             listing['originating_system_name'] = board.strip()
-            if not is_eligible_listing(listing):
+            if not is_eligible_listing(listing, self.rules):
                 continue
             listing['agent_mls_id'] = listing['agent_mls_id'].strip()
             if not listing["listing_id"] or not listing["entry_timestamp"]:
-                raise BridgeError("A Bridge listing is missing its ID or entry timestamp")
+                raise ResoError("An MLS listing is missing its ID or entry timestamp")
             entered = datetime.fromisoformat(str(listing["entry_timestamp"]).replace("Z", "+00:00"))
             if entered.tzinfo is None:
-                raise BridgeError("Bridge entry timestamp has no timezone")
+                raise ResoError("MLS entry timestamp has no timezone")
             if listing["status"] != "Active" or not start <= entered < end:
                 continue
-            yield self._enrich_listing(listing)
+            enriched = self._enrich_listing(listing)
+            if is_eligible_listing(enriched, self.rules):
+                yield enriched
 
     def listing_by_key(self, key):
         """Read a specific listing independently of its age or current status."""
@@ -168,23 +180,28 @@ class BridgeClient:
             '$filter': f"{fields['listing_id']} eq '{safe_key}'",
             '$select': ','.join(dict.fromkeys(fields.values())), '$top': 2}))
         if len(rows) != 1 or str(rows[0].get(fields['listing_id'])) != str(key):
-            raise BridgeError('Bridge could not uniquely identify the requested listing.')
+            raise ResoError('MLS Web API could not uniquely identify the requested listing.')
         listing = {name: rows[0].get(field) for name, field in fields.items()}
         for name in ('originating_system_name','agent_mls_id'):
             if isinstance(listing.get(name), str):
                 listing[name] = listing[name].strip()
         if not listing['entry_timestamp']:
-            raise BridgeError('Bridge returned a listing without an entry timestamp.')
+            raise ResoError('MLS Web API returned a listing without an entry timestamp.')
         try:
             entered = datetime.fromisoformat(str(listing['entry_timestamp']).replace('Z', '+00:00'))
         except ValueError:
-            raise BridgeError('Bridge returned an invalid entry timestamp.') from None
+            raise ResoError('MLS Web API returned an invalid entry timestamp.') from None
         if entered.tzinfo is None or not listing.get('status'):
-            raise BridgeError('Bridge returned a listing without a timezone or status.')
+            raise ResoError('MLS Web API returned a listing without a timezone or status.')
         return self._enrich_listing(listing)
 
     def _enrich_listing(self, listing):
-        if not is_eligible_listing(listing):
+        member_map = self.config.field_map['Member']
+        agent = {}
+        if is_eligible_listing(listing, self.rules):
+            agent = self._one('Member', listing.get('agent_id'), self.members)
+        listing['agent_membership_class'] = code(agent.get(member_map['membership_class'])) or None
+        if not is_eligible_listing(listing, self.rules, require_class=True):
             listing['brokerage_id'] = listing.pop('office_id', None)
             listing['brokerage_name'] = listing.pop('office_name', None)
             for name in ('brokerage_email','brokerage_address','broker_id','broker_name','broker_first_name','broker_email'):
@@ -195,7 +212,6 @@ class BridgeClient:
         office = self._one("Office", listing.get("office_id"), self.offices)
         office_map = self.config.field_map["Office"]
         member_map = self.config.field_map["Member"]
-        agent = self._one("Member", listing.get("agent_id"), self.members)
         broker_id = office.get(office_map["broker_id"])
         broker = self._one("Member", broker_id, self.members)
         listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])
@@ -212,3 +228,8 @@ class BridgeClient:
         listing["mls_number"] = str(listing["mls_number"] or listing["listing_id"])
         listing["address"] = listing["address"] or "Address unavailable"
         return listing
+
+
+# Compatibility names for existing integrations and tests.
+BridgeClient = ResoClient
+BridgeError = ResoError

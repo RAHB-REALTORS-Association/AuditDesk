@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — RESO Web API terminology
+
+- Describe the MLS integration using the RESO Web API standard, with Bridge identified as the current ITSO provider. Use MLS wording for staff refresh controls and integration errors.
+- Prefer RESO_* configuration, ResoClient/ResoError, and inspect-reso while retaining existing Bridge names for compatibility. Document dataset mapping, authentication and eligibility requirements when configuring another MLS service.
+
+## Unreleased — audit row actions
+
+- Replace text-heavy audit actions with labelled icons, revealed on row hover or keyboard focus and kept visible on touch devices. Preserve the existing forms, permissions and delivery behavior.
+
+## Unreleased — managed listing eligibility
+
+- Align the eligibility editor and preview panels with consistent spacing between cards, introduction, fields and expanded source details.
+- Add Manage → Listing eligibility with validated exclusions, role enforcement, unsaved-rule previews and exclusion reasons.
+- Persist configurable membership-class and agent MLS-ID exclusions, defaulting to NL7, while keeping Cornerstone and NONMEM boundaries mandatory.
+- Apply the same exclusions to intake, selection, requests, refreshes, history and reports. Require a verified membership class before selecting or sending new requests.
+- Upgrade additively to schema 9 and provide membership-class verification for historical snapshots without sending mail.
+
 ## Unreleased — office calendar and response deadlines
 
 - Manage opening/closing times by weekday and explicit holidays/office closures under Hours & holidays.

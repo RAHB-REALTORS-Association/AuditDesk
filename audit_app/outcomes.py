@@ -6,6 +6,7 @@ import logging
 
 from .board_scope import require_cornerstone_audit
 from .database import connect
+from .eligibility import eligibility_reason, read_rules
 from .emailer import EmailError, resolve_recipients, send_failure_email, utcnow
 
 
@@ -67,6 +68,9 @@ def deliver_failure_notice(config, audit_id, retry=False, sender=None):
             return False
         listing = dict(db.execute("SELECT * FROM listings WHERE id=?", (audit["listing_id"],)).fetchone())
         try:
+            reason = eligibility_reason(listing, read_rules(db), require_class=True)
+            if reason:
+                raise EmailError(reason)
             _, _, actual = resolve_recipients(listing, config)
         except EmailError as exc:
             db.execute("UPDATE audits SET failure_email_status='email_failed',failure_last_error=? WHERE id=?",

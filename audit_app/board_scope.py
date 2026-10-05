@@ -2,30 +2,29 @@
 from .database import connect, init_db
 from .security import event
 
+from .eligibility import EligibilityRules, eligibility_reason, read_rules
+
 BOARD = 'Cornerstone'
 
 
-def is_eligible_listing(listing):
-    listing = dict(listing)
-    member = listing.get('agent_mls_id')
-    return (listing.get('originating_system_name') == BOARD and isinstance(member, str)
-            and bool(member.strip()) and member.strip().upper() != 'NONMEM')
+def is_eligible_listing(listing, rules=EligibilityRules(), *, require_class=False):
+    return eligibility_reason(listing, rules, require_class=require_class) is None
 
 
 def require_cornerstone_audit(db, audit_id):
-    row = db.execute('SELECT l.originating_system_name,l.agent_mls_id FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.id=?', (audit_id,)).fetchone()
-    if not row or not is_eligible_listing(row):
-        raise ValueError('Only verified Cornerstone member listings can be audited or followed up.')
+    row = db.execute('SELECT l.originating_system_name,l.agent_mls_id,l.agent_membership_class FROM audits a JOIN listings l ON l.id=a.listing_id WHERE a.id=?', (audit_id,)).fetchone()
+    if not row or not is_eligible_listing(row, read_rules(db)):
+        raise ValueError('Only eligible Cornerstone member listings can be audited or followed up.')
 
 
 def backfill_listing_boards(config, client=None):
     """Read board and agent MLS identifiers; never select audits or send mail."""
     if config.env == 'development':
         raise ValueError('Live board verification is unavailable in development.')
-    from .bridge import BridgeClient, BridgeError
+    from .bridge import ResoClient, ResoError
     from .job import job_lock
     init_db(config.database_path)
-    client = client or BridgeClient(config)
+    client = client or ResoClient(config)
     client.inspect_metadata()
     field = config.field_map['Property']['originating_system_name']
     member_field = config.field_map['Property']['agent_mls_id']
@@ -42,14 +41,14 @@ def backfill_listing_boards(config, client=None):
             for row in rows:
                 key = str(row.get(key_field, ''))
                 if key not in batch:
-                    raise BridgeError('Board verification returned an unexpected listing.')
+                    raise ResoError('Board verification returned an unexpected listing.')
                 board = row.get(field)
                 if isinstance(board, str) and board.strip():
                     board = board.strip()
                     member = row.get(member_field)
                     member = member.strip() if isinstance(member, str) and member.strip() else None
                     if key in found and found[key] != (board, member):
-                        raise BridgeError('Board verification returned conflicting listing boards.')
+                        raise ResoError('Board verification returned conflicting listing boards.')
                     found[key] = (board, member)
             with connect(config.database_path) as db:
                 for key, (board, member) in found.items():

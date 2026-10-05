@@ -1,12 +1,12 @@
-"""Refresh saved listing records from Bridge office profiles without running an audit."""
+"""Refresh saved listing records from MLS office profiles without running an audit."""
 
-from .bridge import BridgeClient, office_address
+from .bridge import ResoClient, office_address
 from .database import connect, init_db
 
 
 def backfill_office_addresses(config, client=None):
     init_db(config.database_path)
-    client = client or BridgeClient(config)
+    client = client or ResoClient(config)
     client.inspect_metadata()
     fields = config.field_map["Office"]
     with connect(config.database_path) as db:

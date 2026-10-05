@@ -70,6 +70,33 @@ class FoundationTests(unittest.TestCase):
         return client.post(path, data=data, base_url=self.config.public_url,
                            headers={'Cf-Access-Jwt-Assertion':self.token(role), 'Origin':self.config.public_url, **headers})
 
+    def test_eligibility_management_preview_save_validation_and_roles(self):
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET agent_membership_class='MEMBER'")
+            db.commit()
+        form = {'membership_classes':'NL7, MEMBER', 'agent_ids':'', 'action':'preview'}
+        self.assertEqual(self.get('/?tab=eligibility', role='reviewer').status_code, 403)
+        self.assertEqual(self.post('/manage/eligibility', form, role='reviewer').status_code, 403)
+        with connect(self.config.database_path) as db:
+            before = db.execute('SELECT count(*) FROM activity_events').fetchone()[0]
+        preview = self.post('/manage/eligibility', form, role='manager', page='/?tab=eligibility')
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn('Preview of unsaved rules', preview.text)
+        self.assertIn('Excluded membership class: MEMBER', preview.text)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM activity_events').fetchone()[0], before)
+            self.assertEqual(db.execute('SELECT count(*) FROM listing_eligibility').fetchone()[0], 0)
+        invalid = self.post('/manage/eligibility', {**form,'membership_classes':"NL7'",'action':'save'}, page='/?tab=eligibility')
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('NL7&#x27;', invalid.text)
+        self.assertIn('use up to 50 codes', invalid.text)
+        self.assertEqual(self.post('/manage/eligibility', {**form,'action':'save'}, role='manager', page='/?tab=eligibility').status_code, 303)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 3)
+            self.assertEqual(db.execute('SELECT actor FROM activity_events ORDER BY id DESC LIMIT 1').fetchone()[0], 'manager')
+        self.assertIn('No records match these filters', self.get('/?tab=audits').text)
+
     def test_delete_person_revokes_access_clears_assignments_and_preserves_audits(self):
         self.seed_asana_audits()
         with connect(self.config.database_path) as db:
@@ -89,7 +116,7 @@ class FoundationTests(unittest.TestCase):
     def test_bulk_refresh_route_has_selection_and_accepts_multiple_ids(self):
         self.seed_asana_audits()
         page=self.get(role='reviewer').text
-        self.assertIn('Refresh selected from Bridge',page)
+        self.assertIn('Refresh selected from MLS',page)
         self.assertNotIn('Assign selected to',page)
         with patch('audit_app.application.refresh_audits',return_value={'refreshed':2,'skipped':0,'needs_attention':0}) as refresh:
             response=self.post('/audits/refresh',{'audit_ids':['1','3']},role='reviewer')
@@ -502,12 +529,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-8.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-9.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),8)
+        self.assertEqual(validate(snapshot),9)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -539,7 +566,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),8)
+        self.assertEqual(validate(file),9)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -564,7 +591,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],8)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)

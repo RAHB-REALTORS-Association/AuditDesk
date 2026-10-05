@@ -25,7 +25,7 @@ class DemoLottery:
         return choices[0]
 
 
-class DemoBridge:
+class DemoReso:
     def __init__(self, rows):
         self.rows = rows
 
@@ -52,7 +52,7 @@ class DemoSender:
 
 def _listing(number, office, broker, entered, status="Active"):
     return {
-        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "listing_id": number,
+        "originating_system_name": "Cornerstone", "agent_mls_id": "DEMO-MEMBER", "agent_membership_class": "MEMBER", "listing_id": number,
         "mls_number": number,
         "status": status,
         "entry_timestamp": entered.isoformat(timespec="seconds"),
@@ -91,20 +91,20 @@ def simulate_cycle(config):
             _listing("DEMO-INACTIVE", "office-d", "broker-d", now - timedelta(hours=1), status="Pending"),
         ]
         sender = DemoSender()
-        first = run_job(demo_config, DemoBridge(rows), DemoLottery(), now, sender=sender)
+        first = run_job(demo_config, DemoReso(rows), DemoLottery(), now, sender=sender)
         with connect(demo_config.database_path) as db:
             selected = db.execute("""SELECT a.id, a.email_status, l.mls_number, a.intended_to, a.intended_cc, a.actual_recipients
                 FROM audits a JOIN listings l ON l.id=a.listing_id WHERE l.mls_number='DEMO-B'""").fetchone()
             first_status = selected["email_status"]
             considered = {row["mls_number"]: row["processing_status"] for row in db.execute("SELECT mls_number,processing_status FROM listings WHERE mls_number LIKE 'DEMO-%'")}
-        second = run_job(demo_config, DemoBridge(rows), DemoLottery(), now, sender=sender)
+        second = run_job(demo_config, DemoReso(rows), DemoLottery(), now, sender=sender)
         retried = deliver_audit(demo_config, selected["id"], retry=True, sender=sender, now=now)
         with connect(demo_config.database_path) as db:
             final_status = db.execute("SELECT email_status FROM audits WHERE id=?", (selected["id"],)).fetchone()[0]
             attempt_count = db.execute("SELECT count(*) FROM email_attempts WHERE audit_id=?", (selected["id"],)).fetchone()[0]
             selected_count = db.execute("SELECT count(*) FROM audits WHERE listing_id IN (SELECT id FROM listings WHERE mls_number LIKE 'DEMO-%')").fetchone()[0]
         return {
-            "mode": "isolated synthetic test; no Bridge or SendGrid network call",
+            "mode": "isolated synthetic test; no MLS API or SendGrid network call",
             "bridge_rows": len(rows), "server_filtered_rows": first["fetched"],
             "excluded_old_or_inactive": ["DEMO-OLD", "DEMO-INACTIVE"],
             "first_run": first, "candidate_statuses_after_first_run": considered,
@@ -116,3 +116,7 @@ def simulate_cycle(config):
             "manual_retry_succeeded": retried, "final_email_status": final_status,
             "send_attempts": attempt_count, "simulated_message_id": "SIMULATED-MESSAGE-ID",
         }
+
+
+# Compatibility for callers using the original synthetic client name.
+DemoBridge = DemoReso

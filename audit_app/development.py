@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from .database import connect
 from .job import run_job
-from .simulation import DemoBridge, _listing
+from .simulation import DemoReso, _listing
 
 
 def seed_development(config):
@@ -14,7 +14,7 @@ def seed_development(config):
     # The regular workflow builds fixture records with a local stub. This config
     # never leaves this function and has no credentials or live intake client.
     demo = replace(config, env="test", email_enabled=True, rate=1)
-    run_job(demo, client=DemoBridge(rows), now=now, sender=lambda *args: "SIMULATED-NOT-SENT")
+    run_job(demo, client=DemoReso(rows), now=now, sender=lambda *args: "SIMULATED-NOT-SENT")
     with connect(config.database_path) as db:
         # Demonstrate distinct response states without touching live integrations.
         actual_now = datetime.now(timezone.utc)

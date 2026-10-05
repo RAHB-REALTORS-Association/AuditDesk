@@ -1,6 +1,6 @@
 # Contributing to AuditDesk
 
-Preserve the Bridge intake, fair selection, cooldowns, delivery protections, assignments, results, and reporting workflow. The [architecture guide](docs/ARCHITECTURE.md) maps these responsibilities.
+Preserve the RESO Web API intake, fair selection, cooldowns, delivery protections, assignments, results, and reporting workflow. The [architecture guide](docs/ARCHITECTURE.md) maps these responsibilities.
 
 ## Local setup
 
@@ -27,11 +27,12 @@ Both `python main.py COMMAND` and `python -m audit_app COMMAND` are supported. R
 | Command | Purpose | External effects |
 | --- | --- | --- |
 | `serve` | Start the local Flask server | Development is synthetic; test/production can run enabled scheduling |
-| `simulate` | Demonstrate the complete audit cycle | Temporary synthetic data, no Bridge or SendGrid calls |
-| `run` | Run intake and selection | Development simulates; test/production queries Bridge and may send enabled mail |
-| `inspect-bridge` | Validate the field map against Bridge metadata | Live Bridge reads; unavailable in development |
-| `backfill-listing-boards` | Verify historical listing boards and agent MLS identifiers without selecting audits or sending email | Bridge reads and local provenance/activity updates; unavailable in development |
-| `backfill-office-addresses` | Fill older listing office addresses | Live Bridge reads and local address updates; unavailable in development |
+| `simulate` | Demonstrate the complete audit cycle | Temporary synthetic data, no MLS API or SendGrid calls |
+| `run` | Run intake and selection | Development simulates; test/production queries the MLS and may send enabled mail |
+| `inspect-reso` (`inspect-bridge` alias) | Validate the field map against RESO Web API metadata | Live MLS API reads; unavailable in development |
+| `backfill-listing-boards` | Verify historical listing boards and agent MLS identifiers without selecting audits or sending email | RESO Web API reads and local provenance/activity updates; unavailable in development |
+| `backfill-membership-classes` | Verify historical listing agent membership classes | MLS Member reads and class/activity updates, no selection or delivery; unavailable in development |
+| `backfill-office-addresses` | Fill older listing office addresses | Live MLS API reads and local address updates; unavailable in development |
 | `backup --output PATH` | Create a consistent database backup | New sensitive backup file; unavailable in development |
 | `restore --input PATH --confirm 'RESTORE STOPPED AUDITDESK'` | Restore a stopped service | Replaces database state; follow the deployment guide |
 

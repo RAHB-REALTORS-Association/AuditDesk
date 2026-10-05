@@ -16,11 +16,11 @@ IT can use **Delete person** in **Manage → Access** to remove an account and r
 
 ## Refresh corrected listing data
 
-After an upstream data issue has been corrected, open **Audit history**, select up to 20 affected audits, and choose **Refresh selected from Bridge**. AuditDesk fetches each listing by its Bridge key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.
+After an upstream data issue has been corrected, open **Audit history**, select up to 20 affected audits, and choose **Refresh selected from MLS**. AuditDesk fetches each listing by its MLS listing key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.
 
 Only pending or explicitly failed original requests without an audit result are refreshed. Sent, sending, uncertain-delivery, and completed audits are skipped. Refresh preserves selections, assignments, and email-attempt history and sends no email. Review the recipients and delivery detail, then use **Retry email** when ready. Missing or invalid contacts remain flagged; listings that no longer meet the Cornerstone/member rules cannot be sent. Test mode still redirects delivery to the configured administrator.
 
-Bridge errors or conflicting record changes reject the refresh without saving a partial batch. Refresh is unavailable in the synthetic development sandbox.
+MLS API errors or conflicting record changes reject the refresh without saving a partial batch. Refresh is unavailable in the synthetic development sandbox.
 
 ## Development previews
 
@@ -83,7 +83,7 @@ Open **Manage → Audit request email** in the staff sidebar. Edit the subject a
 
 Select text in the message body and use **B**, **I**, or **U** to apply bold, italic, or underline. Preview shows the formatted email. SendGrid receives both a formatted HTML body and a readable plain-text version. Existing saved plain-text templates remain editable and are converted to the rich editor when next saved.
 
-Available merge tags are `{{mls_number}}`, `{{address}}`, `{{agent_name}}`, `{{brokerage_name}}`, `{{broker_name}}`, and `{{broker_first_name}}`. The broker's first name comes from Bridge `MemberFirstName`. Older saved listings use the first name from `MemberFullName` when available. The body must contain the first four tags so every request identifies the listing and agent. An unknown or incomplete tag is rejected before saving. The editor shows the test-mode recipient diagnostic in its preview while TEST MODE is active.
+Available merge tags are `{{mls_number}}`, `{{address}}`, `{{agent_name}}`, `{{brokerage_name}}`, `{{broker_name}}`, and `{{broker_first_name}}`. The broker's first name comes from the MLS `MemberFirstName`. Older saved listings use the first name from `MemberFullName` when available. The body must contain the first four tags so every request identifies the listing and agent. An unknown or incomplete tag is rejected before saving. The editor shows the test-mode recipient diagnostic in its preview while TEST MODE is active.
 
 
 ## Record an audit result
@@ -116,7 +116,7 @@ Open **Management → Daily audit report** for the past 90 local calendar days. 
 
 ## Review brokerage statistics
 
-Open **Management → Brokerage statistics** to compare brokerages for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the brokerage has a completed audit. Branches with the same brokerage name (ignoring capitalization and extra spaces) are combined into one row, with their counts and rates calculated together. Select **View branches** to see each office's Bridge profile address and its own counts and rates; brokerage rows remain grouped while sorting. Listings without a brokerage name retain their Bridge office ID as a separate group. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period, including all branch addresses. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. PDF support is included in the locked runtime dependencies. If export is unavailable, ask IT to verify the deployed environment.
+Open **Management → Brokerage statistics** to compare brokerages for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the brokerage has a completed audit. Branches with the same brokerage name (ignoring capitalization and extra spaces) are combined into one row, with their counts and rates calculated together. Select **View branches** to see each office's MLS profile address and its own counts and rates; brokerage rows remain grouped while sorting. Listings without a brokerage name retain their MLS office ID as a separate group. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period, including all branch addresses. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. PDF support is included in the locked runtime dependencies. If export is unavailable, ask IT to verify the deployed environment.
 
 Scheduled runs show **Completed with email errors** when intake succeeded but request delivery failed, including missing or invalid recipients. Check Audit history for the affected audit and its delivery detail. Older completed runs also surface unresolved email errors. **Completed with pending email** means the requests are waiting for delivery, such as when email is disabled; it does not mean mail was accepted.
 
@@ -148,6 +148,16 @@ The handoff uses an undocumented Asana task-creation URL, verified by staff. No 
 
 ## Cornerstone audit eligibility
 
-AuditDesk only imports and displays listings whose Bridge `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership. Cornerstone-originated interboard listings can still belong to nonmember agents: listings whose Bridge `ListAgentMlsId` is `NONMEM` are excluded before broker/contact lookup, selection, and email. A missing broker email alone does not establish interboard status; eligible member listings retain the contact-error workflow.
+AuditDesk only imports and displays listings whose MLS `OriginatingSystemName` is **Cornerstone**. BRREA/Brantford, other board values, and missing board values are excluded. This is an enforced eligibility rule, not a removable list filter. Office or broker names cannot establish board membership. Cornerstone-originated interboard listings can still belong to nonmember agents: listings whose MLS `ListAgentMlsId` is `NONMEM` are excluded before broker/contact lookup, selection, and email. A missing broker email alone does not establish interboard status; eligible member listings retain the contact-error workflow.
 
 Older databases did not store the board or agent MLS identifier. Those records are retained but hidden from listing/audit views and reports until IT verifies their board and agent MLS identifier using `backfill-listing-boards`. An unverified, nonmember, or other-board listing cannot be assigned, have a result recorded, send/retry audit mail, or start an Asana follow-up. A notice identifies how many records await verification. Existing recorded history is not deleted.
+
+## Manage listing eligibility
+
+Open **Manage → Listing eligibility** to exclude membership classes or specific agent MLS IDs. **NL7** is the default exclusion for super subscribers. Cornerstone-only listings and the NONMEM interboard exclusion are always enforced. Use one code per line or commas; matching ignores capitalization. Clear a field to remove its optional exclusions.
+
+**Preview rules** shows how the proposed values affect stored listing snapshots, including exclusion reasons and up to 10 recent examples. Preview does not save, query the MLS, select audits or send mail. **Save eligibility rules** applies the policy to future intake and to unsent requests/retries. Existing records are retained; known excluded records disappear from ordinary lists and reports but remain represented in this preview. Managers and administrators can manage these rules.
+
+An unverified membership class cannot be selected or sent. IT can verify historical classes without sending email. For an unsent audit, **Refresh selected from MLS** updates the listing and contacts; review it before explicitly retrying a failed email. Changes to eligibility do not automatically retry failed requests or reselect earlier listings. The initial intake window remains under **Manage → Selection**.
+
+Audit history uses compact action icons. Hover over a row or move keyboard focus into it to reveal available actions; each icon has a descriptive label and hover title. Touch devices show the controls continuously. Availability still depends on your role and the audit state.
