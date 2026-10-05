@@ -1728,6 +1728,8 @@ a.sort-button { color: inherit; text-decoration: none; }
 @media (max-width: 480px) { .office-hours-row { grid-template-columns: 1fr 1fr; gap: 8px; } .office-hours-row strong { grid-column: 1 / -1; } }
 .danger-button { color: var(--danger, #b42318); border-color: #f0c6c2; }
 
+.eligibility-layout { display: grid; gap: 20px; max-width: 780px; }
+.admin-content .eligibility-intro { margin: 0 0 20px; }
 .eligibility-form { display: grid; gap: .75rem; max-width: 46rem; }
 .eligibility-form label { display: grid; gap: .5rem; font-weight: 600; }
 .eligibility-form textarea { width: 100%; box-sizing: border-box; padding: .75rem 1rem; border: 1px solid #cbd5e1; border-radius: .625rem; font: inherit; resize: vertical; }
@@ -1735,3 +1737,4 @@ a.sort-button { color: inherit; text-decoration: none; }
 .eligibility-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: .5rem; }
 .eligibility-source { margin-top: 1.25rem; }
 .eligibility-source summary { cursor: pointer; font-weight: 600; }
+.eligibility-source .form-help { margin: 12px 0 0; }

@@ -23,10 +23,10 @@ def eligibility_view(config, values=None, error='', preview=False):
     summary = ''.join(f'<tr><td>{esc(label)}</td><td>{count:,}</td></tr>' for label, count in counts)
     rows = ''.join(f'<tr><td>{esc(number)}</td><td>{esc(reason)}</td></tr>' for number, reason in samples)
     source = config.field_map['Member']['membership_class']
-    return f'''<section class="panel admin-panel"><div class="panel-head"><div><h2>Listing eligibility</h2>
+    return f'''<div class="eligibility-layout"><section class="panel admin-panel"><div class="panel-head"><div><h2>Listing eligibility</h2>
         <p>Exclude agent categories that should not receive audit requests.</p></div></div><div class="admin-content">
         {'<p class="form-error" role="alert">'+esc(error)+'</p>' if error else ''}
-        <p>Only Cornerstone listings are considered. Interboard agents marked NONMEM are always excluded.</p>
+        <p class="eligibility-intro">Only Cornerstone listings are considered. Interboard agents marked NONMEM are always excluded.</p>
         <form method="post" action="/manage/eligibility" class="eligibility-form">
         <input type="hidden" name="token" value="{retry_token(config, 'eligibility')}">
         <label for="membership-classes">Excluded membership classes (MUC)<textarea id="membership-classes" name="membership_classes" rows="3" maxlength="2000" spellcheck="false">{escape(classes)}</textarea></label>
@@ -40,4 +40,4 @@ def eligibility_view(config, values=None, error='', preview=False):
         </div></section><section class="panel"><div class="panel-head"><div><h2>{'Preview of unsaved rules' if preview else 'Current rules preview'}</h2>
         <p>Stored listing snapshots only. No MLS query, selection or email is triggered. Eligibility does not guarantee selection; cooldowns and sampling still apply.</p></div></div>
         <div class="table-wrap"><table><thead><tr><th>Eligibility</th><th>Listings</th></tr></thead><tbody>{summary or '<tr><td colspan="2">No stored listings to preview.</td></tr>'}</tbody></table></div>
-        {f'<div class="panel-head"><h3>Latest excluded or unverified listings · up to 10</h3></div><div class="table-wrap"><table><thead><tr><th>MLS number</th><th>Reason</th></tr></thead><tbody>{rows}</tbody></table></div>' if rows else ''}</section>'''
+        {f'<div class="panel-head"><h3>Latest excluded or unverified listings · up to 10</h3></div><div class="table-wrap"><table><thead><tr><th>MLS number</th><th>Reason</th></tr></thead><tbody>{rows}</tbody></table></div>' if rows else ''}</section></div>'''

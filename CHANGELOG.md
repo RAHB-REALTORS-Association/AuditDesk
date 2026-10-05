@@ -11,6 +11,7 @@
 
 ## Unreleased — managed listing eligibility
 
+- Align the eligibility editor and preview panels with consistent spacing between cards, introduction, fields and expanded source details.
 - Add Manage → Listing eligibility with validated exclusions, role enforcement, unsaved-rule previews and exclusion reasons.
 - Persist configurable membership-class and agent MLS-ID exclusions, defaulting to NL7, while keeping Cornerstone and NONMEM boundaries mandatory.
 - Apply the same exclusions to intake, selection, requests, refreshes, history and reports. Require a verified membership class before selecting or sending new requests.
