@@ -122,7 +122,7 @@ The standard field map must include `Property.originating_system_name: Originati
 
 ## Verify membership classes when upgrading to schema 9
 
-Before merging/deploying this change, confirm the mapped Member membership field returns NL7 for a known super subscriber. The live diagnostic confirmed candidate fields exist in metadata, but member-value reads encountered Bridge HTTP 429; `MemberMlsSecurityClass` remains the proposed mapping until that check succeeds.
+The ITSO mapping uses `MemberMlsSecurityClass`, verified against example subscriber agents. The feed returns full labels such as `NL7 - Authorized User Subscriber with Input`; eligibility extracts the code before comparing managed exclusions. Verify equivalent semantics when changing datasets.
 
 Take a pre-upgrade backup and stop/start the single application with the same persistent volume. Schema 9 migration preserves listing/audit records, results, delivery history, deadlines and settings. A schema-8 image needs the pre-upgrade backup to roll back. Keep scheduling and delivery disabled while verifying the field mapping and historical membership classes:
 
@@ -136,3 +136,21 @@ Membership verification reads the stored listing agent's Member profile, reusing
 The command logs metadata inspection, the number of missing records, and checked/verified/unverified counts after each processed listing. Ctrl+C retains already committed records; rerun the command to resume the remaining missing classes.
 
 Review **Manage → Listing eligibility** and its stored-data preview before restoring the intended scheduler/delivery settings. NL7 is excluded by default. Unverified queued requests cannot send; if they are attempted, they become failed with a verification reason. Refresh an unsent audit from the MLS to update its complete snapshot and recipients, then explicitly retry when appropriate. Verification alone does not retry failed requests. Development refuses live verification commands.
+
+## Upgrade broker contact fallback and repair existing requests
+
+This change keeps schema version 9. Existing stored full membership labels are checked by code immediately after deployment; NL7 records remain stored for history but are excluded from operational views and delivery. No SQL cleanup or repeat membership backfill is required for records whose class is already known.
+
+1. Take a backup under Manage → Recovery or with `python main.py backup --output /app/data/backups/auditdesk-pre-contact-repair.sqlite3` (use a new destination).
+2. Set `EMAIL_ENABLED=false` and `SCHEDULER_ENABLED=false` in the staging application's Coolify settings and redeploy the merged image. This pauses the running service, not merely the terminal command. Preserve the persistent volume.
+3. If using a custom RESO/legacy field-map path, add the five fallback fields described in the configuration guide. The shipped `bridge_fields.json` already includes them.
+4. In that application's Terminal, run:
+
+```sh
+python main.py inspect-reso
+python main.py backfill-broker-contacts
+```
+
+Contact repair refreshes the complete MLS snapshot and intended recipients for eligible unsent, unfinished audits whose stored broker email is missing/invalid, in batches of at most 20. It skips sent, unknown/sending, completed and known-excluded records; it never selects audits or sends mail. Unknown membership may be verified as part of refresh and then become excluded. It logs total/refreshed/skipped/needs-attention counts. Reruns skip contacts already repaired; interruption retains committed batches. Audit selection, send history and response deadlines remain unchanged.
+
+Review the intended recipients and remaining errors in Audit history before restoring intended delivery/scheduler switches. A repaired failed request remains failed until explicitly retried; repair does not start its response timer. Retry after restoring email delivery. Unresolved or ambiguous broker contacts remain blocked. For individual later corrections, use **Refresh selected from MLS** and then retry.

@@ -29,7 +29,7 @@ class JsonFormatter(logging.Formatter):
         data = {"time": datetime.now(timezone.utc).isoformat(timespec="seconds"), "level": record.levelname,
                 "logger": record.name, "event": record.getMessage()}
         for key in ("run_id", "audit_id", "status", "fetched", "new", "selected",
-                    "total", "checked", "verified", "unverified"):
+                    "total", "checked", "verified", "unverified", "refreshed", "skipped", "needs_attention"):
             if hasattr(record, key):
                 data[key] = getattr(record, key)
         if record.exc_info:
@@ -39,14 +39,14 @@ class JsonFormatter(logging.Formatter):
 
 def main():
     parser = argparse.ArgumentParser(description="MLS Audit Desk")
-    parser.add_argument("command", choices=("inspect-reso", "inspect-bridge", "backfill-membership-classes", "backfill-listing-boards", "backfill-office-addresses", "run", "serve", "simulate", "backup", "restore"))
+    parser.add_argument("command", choices=("inspect-reso", "inspect-bridge", "backfill-broker-contacts", "backfill-membership-classes", "backfill-listing-boards", "backfill-office-addresses", "run", "serve", "simulate", "backup", "restore"))
     parser.add_argument("--output", help="New backup destination")
     parser.add_argument("--input", help="Backup to restore while the service is stopped")
     parser.add_argument("--confirm", default="")
     args = parser.parse_args()
     load_dotenv()
     config = load_config()
-    if config.env == "development" and args.command in {"backup", "restore", "backfill-listing-boards", "backfill-office-addresses", "backfill-membership-classes", "inspect-reso", "inspect-bridge"}:
+    if config.env == "development" and args.command in {"backup", "restore", "backfill-broker-contacts", "backfill-listing-boards", "backfill-office-addresses", "backfill-membership-classes", "inspect-reso", "inspect-bridge"}:
         parser.error("Development uses disposable synthetic data; live intake and backup/restore commands are unavailable")
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
@@ -77,6 +77,15 @@ def main():
     elif args.command == 'backfill-listing-boards':
         from .board_scope import backfill_listing_boards
         print(json.dumps(backfill_listing_boards(config)))
+    elif args.command == 'backfill-broker-contacts':
+        from .broker_backfill import backfill_broker_contacts
+        try:
+            print(json.dumps(backfill_broker_contacts(config)))
+        except KeyboardInterrupt:
+            logging.getLogger('audit_app').warning(
+                'Broker contact repair interrupted. Committed batches are retained; '
+                'rerun backfill-broker-contacts to retry remaining missing contacts.')
+            raise SystemExit(130) from None
     elif args.command == "backfill-office-addresses":
         from .office_backfill import backfill_office_addresses
         print(json.dumps(backfill_office_addresses(config)))
