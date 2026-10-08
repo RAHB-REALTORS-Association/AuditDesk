@@ -3,7 +3,7 @@ import logging
 
 from .bridge import ResoClient
 from .database import connect, init_db
-from .eligibility import code
+from .eligibility import membership_code
 from .job import job_lock
 from .security import event
 
@@ -25,7 +25,7 @@ def backfill_membership_classes(config, client=None):
                 WHERE agent_membership_class IS NULL ORDER BY id''')]
         LOG.info('membership_verification_started', extra={'total': len(records)})
         for record in records:
-            membership = code(client._one('Member', record['agent_id'], client.members).get(field)) or None
+            membership = membership_code(client._one('Member', record['agent_id'], client.members).get(field)) or None
             checked += 1
             if membership:
                 with connect(config.database_path) as db:

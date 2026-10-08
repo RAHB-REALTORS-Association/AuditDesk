@@ -14,6 +14,13 @@ def code(value):
     return value.strip().upper() if isinstance(value, str) else ''
 
 
+def membership_code(value):
+    """Accept a code or the feed's 'CODE - description' label."""
+    value = code(value)
+    match = re.match(r'^([A-Z0-9][A-Z0-9_.-]{0,39})\s+[-–—]\s+\S', value)
+    return match.group(1) if match else value
+
+
 def parse_codes(raw, label):
     if len(raw) > 2000:
         raise ValueError(f'{label} must contain at most 50 codes.')
@@ -47,7 +54,7 @@ def eligibility_reason(listing, rules=EligibilityRules(), *, require_class=False
         return 'Non-member / interboard agent (NONMEM)'
     if agent_id in rules.agent_ids:
         return f'Excluded agent MLS ID: {agent_id}'
-    membership = code(listing.get('agent_membership_class'))
+    membership = membership_code(listing.get('agent_membership_class'))
     if membership in rules.membership_classes:
         return f'Excluded membership class: {membership}'
     if require_class and not membership:
