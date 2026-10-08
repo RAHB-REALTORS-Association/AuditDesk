@@ -73,7 +73,7 @@ class RefreshTests(unittest.TestCase):
             'OriginalEntryTimestamp':'2020-01-01T00:00:00Z','OriginatingSystemName':'Cornerstone','ListAgentMlsId':'MEMBER','ListOfficeKey':'office'}]))
         client._one=Mock(side_effect=[{'MemberMlsSecurityClass':'MEMBER'},
                                      {'OfficeBrokerKey':'broker','OfficeEmail':'office@example.invalid'},
-                                     {'MemberEmail':'corrected@example.invalid'}])
+                                     {'MemberEmail':'corrected@example.invalid','MemberStatus':'Active'}])
         current=client.listing_by_key('old')
         self.assertEqual(current['broker_email'],'corrected@example.invalid')
         self.assertNotIn('OriginalEntryTimestamp',client._collection.call_args.args[1]['$filter'])

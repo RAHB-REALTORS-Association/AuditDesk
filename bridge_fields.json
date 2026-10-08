@@ -18,7 +18,10 @@
     "name": "MemberFullName",
     "first_name": "MemberFirstName",
     "email": "MemberEmail",
-    "membership_class": "MemberMlsSecurityClass"
+    "membership_class": "MemberMlsSecurityClass",
+    "type": "MemberType",
+    "status": "MemberStatus",
+    "office_id": "OfficeKey"
   },
   "Office": {
     "key": "OfficeKey",
@@ -29,6 +32,8 @@
     "address2": "OfficeAddress2",
     "city": "OfficeCity",
     "province": "OfficeStateOrProvince",
-    "postal_code": "OfficePostalCode"
+    "postal_code": "OfficePostalCode",
+    "manager_id": "OfficeManagerKey",
+    "parent_id": "MainOfficeKey"
   }
 }

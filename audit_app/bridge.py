@@ -9,10 +9,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from itertools import islice
 
 
 from .board_scope import is_eligible_listing
-from .eligibility import EligibilityRules, code
+from .eligibility import EligibilityRules, membership_code
+from .emailer import valid_email
 
 
 LOG = logging.getLogger(__name__)
@@ -60,6 +62,8 @@ class ResoClient:
         self.properties = {}
         self.members = {}
         self.offices = {}
+        self.office_rosters = {}
+        self.broker_contacts = {}
 
     def _get(self, url):
         if self.config.env == "development":
@@ -139,6 +143,68 @@ class ResoClient:
             cache[key] = next(self._collection(resource, params), {})
         return cache[key]
 
+    def _usable_contact(self, member, roles=None):
+        fields = self.config.field_map['Member']
+        if not valid_email(member.get(fields['email'])):
+            return False
+        if fields.get('status') and str(member.get(fields['status']) or '').strip().casefold() != 'active':
+            return False
+        return roles is None or str(member.get(fields['type']) or '').strip().casefold() in roles
+
+    def _office_contact(self, office, office_id):
+        """Return contact key/profile and whether ambiguity prevents fallback."""
+        offices, members = self.config.field_map['Office'], self.config.field_map['Member']
+        broker_id = office.get(offices['broker_id'])
+        broker = self._one('Member', broker_id, self.members)
+        if self._usable_contact(broker):
+            return broker_id, broker, False
+        if not all(members.get(field) for field in ('type', 'status', 'office_id')):
+            return None, {}, False
+        if office_id not in self.office_rosters:
+            key = str(office_id).replace("'", "''")
+            params = {'$filter': f"{members['office_id']} eq '{key}' and {members['status']} eq 'Active' and ({members['type']} eq 'Broker of Record' or {members['type']} eq 'Broker Manager')",
+                      '$select': ','.join(dict.fromkeys(members.values())), '$top': 100}
+            self.office_rosters[office_id] = list(islice(self._collection('Member', params), 101))
+        roster = self.office_rosters[office_id]
+        if len(roster) > 100:
+            return None, {}, True
+        for role in ('broker of record', 'broker manager'):
+            if role == 'broker manager' and offices.get('manager_id'):
+                manager_id = office.get(offices['manager_id'])
+                manager = self._one('Member', manager_id, self.members)
+                if self._usable_contact(manager, {'broker manager', 'broker of record'}):
+                    return manager_id, manager, False
+            candidates = {row[members['key']]: row for row in roster
+                          if row.get(members['key']) and row.get(members['office_id']) == office_id
+                          and self._usable_contact(row, {role})}
+            if len(candidates) == 1:
+                return *next(iter(candidates.items())), False
+            if len(candidates) > 1:
+                return None, {}, True
+        return None, {}, False
+
+    def _resolve_broker(self, office, office_id):
+        if office_id in self.broker_contacts:
+            return self.broker_contacts[office_id]
+        visited = set()
+        current, key = office, office_id
+        result = (None, {})
+        for depth in range(5):
+            if not key or key in visited or not current:
+                break
+            visited.add(key)
+            contact_id, member, ambiguous = self._office_contact(current, key)
+            if contact_id or ambiguous:
+                result = (contact_id, member)
+                break
+            parent_field = self.config.field_map['Office'].get('parent_id')
+            key = current.get(parent_field) if parent_field else None
+            if not key or key in visited or depth == 4:
+                break
+            current = self._one('Office', key, self.offices)
+        self.broker_contacts[office_id] = result
+        return result
+
     def active_new_listings(self, start, end):
         self.inspect_metadata()
         fields = self.config.field_map["Property"]
@@ -200,7 +266,7 @@ class ResoClient:
         agent = {}
         if is_eligible_listing(listing, self.rules):
             agent = self._one('Member', listing.get('agent_id'), self.members)
-        listing['agent_membership_class'] = code(agent.get(member_map['membership_class'])) or None
+        listing['agent_membership_class'] = membership_code(agent.get(member_map['membership_class'])) or None
         if not is_eligible_listing(listing, self.rules, require_class=True):
             listing['brokerage_id'] = listing.pop('office_id', None)
             listing['brokerage_name'] = listing.pop('office_name', None)
@@ -212,8 +278,7 @@ class ResoClient:
         office = self._one("Office", listing.get("office_id"), self.offices)
         office_map = self.config.field_map["Office"]
         member_map = self.config.field_map["Member"]
-        broker_id = office.get(office_map["broker_id"])
-        broker = self._one("Member", broker_id, self.members)
+        broker_id, broker = self._resolve_broker(office, listing.get('office_id'))
         listing["agent_name"] = listing.get("agent_name") or agent.get(member_map["name"])
         listing["agent_email"] = listing.get("agent_email") or agent.get(member_map["email"])
         listing["brokerage_name"] = listing.get("office_name") or office.get(office_map["name"])
