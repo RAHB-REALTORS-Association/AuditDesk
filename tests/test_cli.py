@@ -43,7 +43,7 @@ class CliTests(unittest.TestCase):
 
     def test_development_rejects_live_and_restore_commands(self):
         for launcher in LAUNCHERS:
-            for command in ("inspect-reso", "inspect-bridge", "backfill-office-addresses", "backup", "restore"):
+            for command in ("inspect-reso", "inspect-bridge", "backfill-broker-contacts", "backfill-office-addresses", "backup", "restore"):
                 with self.subTest(launcher=launcher, command=command):
                     result = self.command(launcher, command)
                     self.assertEqual(result.returncode, 2)

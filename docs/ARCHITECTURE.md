@@ -41,6 +41,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
 | `backup.py` | Consistent online backup, bounded restore staging, and validated offline restore |
+| `broker_backfill.py` | Bounded refresh of eligible unsent audits missing broker contacts; preserves delivery history and never sends |
 | `office_backfill.py` | Address maintenance for older imported records |
 | `development.py`, `simulation.py` | Synthetic preview fixtures and isolated developer/CLI verification |
 

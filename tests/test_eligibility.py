@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 from audit_app.bridge import BridgeClient, BridgeError
 from audit_app.config import load_config
 from audit_app.database import connect, init_db
-from audit_app.eligibility import eligibility_reason, read_rules, rules_from_form, save_rules
+from audit_app.eligibility import eligibility_reason, membership_code, read_rules, rules_from_form, save_rules
 from audit_app.eligibility_backfill import backfill_membership_classes
 from audit_app.job import deliver_audit, run_job
 from audit_app.refresh import refresh_audits
@@ -32,6 +32,21 @@ class EligibilityTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 1)
         self.assertIn('NL7', eligibility_reason(subscriber))
+
+    def test_descriptive_membership_labels_block_existing_and_new_requests(self):
+        for value in (' nl7 - Authorized User Subscriber with Input ', 'NL7 – Description', 'NL7 — Description'):
+            self.assertEqual(membership_code(value), 'NL7')
+            self.assertIn('NL7', eligibility_reason({**listing('blocked'), 'agent_membership_class':value}))
+        self.assertEqual(membership_code('NL70 - Other class'), 'NL70')
+        self.assertEqual(membership_code('SP1 - Salesperson Full Input'), 'SP1')
+        run_job(self.config, FakeClient([listing('1')]), random.Random(1), NOW)
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET agent_membership_class='NL7 - Authorized User Subscriber with Input'")
+            db.commit()
+            self.assertEqual(db.execute('SELECT count(*) FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)').fetchone()[0], 0)
+        sender = Mock()
+        self.assertFalse(deliver_audit(replace(self.config, email_enabled=True), 1, retry=True, sender=sender, now=NOW))
+        sender.assert_not_called()
 
     def test_unknown_intake_fails_without_processing_or_selecting_any_listing(self):
         unknown = {**listing('unknown'), 'agent_membership_class': None}

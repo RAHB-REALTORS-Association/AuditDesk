@@ -31,6 +31,7 @@ Both `python main.py COMMAND` and `python -m audit_app COMMAND` are supported. R
 | `run` | Run intake and selection | Development simulates; test/production queries the MLS and may send enabled mail |
 | `inspect-reso` (`inspect-bridge` alias) | Validate the field map against RESO Web API metadata | Live MLS API reads; unavailable in development |
 | `backfill-listing-boards` | Verify historical listing boards and agent MLS identifiers without selecting audits or sending email | RESO Web API reads and local provenance/activity updates; unavailable in development |
+| `backfill-broker-contacts` | Repair missing broker contacts on eligible unsent audits | MLS reads and snapshot/recipient updates; no selection or delivery; unavailable in development |
 | `backfill-membership-classes` | Verify historical listing agent membership classes | MLS Member reads and class/activity updates, no selection or delivery; unavailable in development |
 | `backfill-office-addresses` | Fill older listing office addresses | Live MLS API reads and local address updates; unavailable in development |
 | `backup --output PATH` | Create a consistent database backup | New sensitive backup file; unavailable in development |

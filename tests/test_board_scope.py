@@ -49,7 +49,7 @@ class BoardScopeTests(unittest.TestCase):
         params=client._collection.call_args[0][1]
         self.assertIn("OriginatingSystemName eq 'Cornerstone'",params['$filter'])
         self.assertIn('OriginatingSystemName',params['$select'])
-        self.assertEqual(client._one.call_count,3)
+        self.assertEqual(client._one.call_count,2)
 
     def test_backfill_classifies_old_records_without_selection_or_mail(self):
         with connect(self.config.database_path) as db:

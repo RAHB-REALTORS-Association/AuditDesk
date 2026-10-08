@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — broker contact recovery
+
+- Resolve missing broker contacts from qualified active office roster members and explicit head-office links. Prefer Brokers of Record before Broker Managers; keep ambiguous, inactive or invalid contacts blocked and bound roster/parent traversal.
+- Match full membership labels such as `NL7 - Authorized User Subscriber with Input` against managed codes for both existing records and new intake.
+- Add `backfill-broker-contacts` to repair eligible unsent audits missing a usable broker email in resumable batches without selecting audits or sending mail. Schema remains version 9.
+
 ## Unreleased — RESO Web API terminology
 
 - Describe the MLS integration using the RESO Web API standard, with Bridge identified as the current ITSO provider. Use MLS wording for staff refresh controls and integration errors.
