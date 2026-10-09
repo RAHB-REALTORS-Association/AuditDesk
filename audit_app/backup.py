@@ -12,9 +12,60 @@ from pathlib import Path
 
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import job_lock
+from .documents import MAX_DOCUMENT_BYTES, document_directory, document_path
 
 
 MAX_BACKUP_BYTES = 512 * 1024 * 1024
+
+
+def _payloads(db):
+    """Validate every reference before recovery writes any files."""
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_documents'").fetchone():
+        return
+    db.row_factory = sqlite3.Row
+    rows = db.execute('SELECT storage_name,byte_count,sha256 FROM audit_documents').fetchall()
+    if not rows:
+        return
+    kind = db.execute("SELECT type FROM sqlite_master WHERE name='backup_document_payloads'").fetchone()
+    if not kind or kind[0] != 'table':
+        raise ValueError('Backup is missing its paperwork files. Use a complete AuditDesk backup.')
+    for row in rows:
+        document_path(Path('/unused'), row['storage_name'])
+        size = row['byte_count']
+        if not isinstance(size, int) or not 0 < size <= MAX_DOCUMENT_BYTES:
+            raise ValueError('Backup document size is invalid.')
+        payload = db.execute('SELECT content FROM backup_document_payloads WHERE storage_name=? AND length(content)=?', (row['storage_name'], size)).fetchone()
+        if not payload or not isinstance(payload[0], bytes) or len(payload[0]) != size or hashlib.sha256(payload[0]).hexdigest() != row['sha256']:
+            raise ValueError('Backup paperwork integrity check failed.')
+        yield row['storage_name'], payload[0]
+
+
+def _recover_documents(config, prepared):
+    """Materialize immutable originals before replacing the database."""
+    created = []
+    directory = document_directory(config)
+    try:
+        with closing(sqlite3.connect(prepared)) as db:
+            for name, content in _payloads(db):
+                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                path = document_path(directory, name)
+                if path.exists():
+                    if path.read_bytes() != content:
+                        raise ValueError('An existing document conflicts with the backup. Live state was not replaced.')
+                    continue
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                created.append(path)
+                with os.fdopen(fd, 'wb') as output:
+                    output.write(content)
+                    output.flush()
+                    os.fsync(output.fileno())
+            db.execute('DROP TABLE IF EXISTS backup_document_payloads')
+            db.commit()
+        return created
+    except Exception:
+        for path in created:
+            path.unlink(missing_ok=True)
+        raise
 
 
 def validate(path):
@@ -41,6 +92,17 @@ def validate(path):
                 if not kind or kind[0] != 'table':
                     raise ValueError('Backup is missing AuditDesk tables.')
                 db.execute(f'SELECT {columns} FROM {table} LIMIT 0')
+            if version >= 10:
+                for table, columns in {
+                    'audit_documents': 'id,audit_id,storage_name,filename,media_type,byte_count,sha256,page_count,uploaded_at,uploaded_by,source,test_mode',
+                    'document_pages': 'id,document_id,page_number',
+                }.items():
+                    kind = db.execute('SELECT type FROM sqlite_master WHERE name=?', (table,)).fetchone()
+                    if not kind or kind[0] != 'table':
+                        raise ValueError('Backup is missing paperwork tables.')
+                    db.execute(f'SELECT {columns} FROM {table} LIMIT 0')
+            for _ in _payloads(db):
+                pass
             return version
     except (sqlite3.DatabaseError, OSError):
         raise ValueError('Backup could not be read as a valid AuditDesk database.') from None
@@ -117,6 +179,21 @@ def backup(config, destination):
     try:
         with connect(config.database_path) as source, closing(sqlite3.connect(target)) as output:
             source.backup(output)
+            output.row_factory = sqlite3.Row
+            output.execute('DROP TABLE IF EXISTS backup_document_payloads')
+            output.execute('CREATE TABLE backup_document_payloads(storage_name TEXT PRIMARY KEY, content BLOB NOT NULL)')
+            for row in output.execute('SELECT storage_name,byte_count,sha256 FROM audit_documents').fetchall():
+                path = document_path(document_directory(config), row['storage_name'])
+                with path.open('rb') as document:
+                    content = document.read(MAX_DOCUMENT_BYTES + 1)
+                if len(content) != row['byte_count'] or hashlib.sha256(content).hexdigest() != row['sha256']:
+                    raise ValueError('Document integrity check failed; backup was not created.')
+                output.execute('INSERT INTO backup_document_payloads VALUES(?,?)', (row['storage_name'], content))
+                if target.stat().st_size > MAX_BACKUP_BYTES:
+                    raise ValueError('Complete backup exceeds the 512 MiB recovery limit. Contact an administrator.')
+            output.commit()
+        if target.stat().st_size > MAX_BACKUP_BYTES:
+            raise ValueError('Complete backup exceeds the 512 MiB recovery limit. Contact an administrator.')
         validate(target)
     except Exception:
         target.unlink(missing_ok=True)
@@ -144,6 +221,8 @@ def restore(config, source, confirmation):
         with job_lock(live):
             fd, temp = tempfile.mkstemp(prefix='.restore-', dir=live.parent)
             os.close(fd)
+            recovered = []
+            replaced = False
             try:
                 with closing(sqlite3.connect(f"file:{source}?mode=ro", uri=True)) as original, closing(sqlite3.connect(temp)) as output:
                     original.backup(output)
@@ -154,8 +233,13 @@ def restore(config, source, confirmation):
                     from datetime import datetime, timezone
                     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
                     backup(config, str(live) + '.before-restore-' + stamp)
+                recovered = _recover_documents(config, temp)
                 os.replace(temp, live)
+                replaced = True
             finally:
+                if not replaced:
+                    for path in recovered:
+                        path.unlink(missing_ok=True)
                 Path(temp).unlink(missing_ok=True)
     finally:
         service.release()
