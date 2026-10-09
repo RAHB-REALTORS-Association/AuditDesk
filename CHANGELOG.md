@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — paperwork ingestion (Phase 0)
+
+- Attach PDF, PNG and JPEG paperwork on an audit's result page, with scoped authenticated downloads, page records, hashes, duplicate prevention and uploader/activity history. Uploads preserve response receipt, deadlines and results.
+- Upgrade additively to schema 10. Store private originals beside SQLite on the persistent volume and include them in complete SQLite backup artifacts; validate hashes and recover files during offline restore.
+- Reject real uploads in development and provide a generated synthetic sample. Keep Argus extraction and inbound mail outside this phase; document the inbound matching proposal and review gate.
+
 ## Unreleased — broker contact recovery
 
 - Resolve missing broker contacts from qualified active office roster members and explicit head-office links. Prefer Brokers of Record before Broker Managers; keep ambiguous, inactive or invalid contacts blocked and bound roster/parent traversal.

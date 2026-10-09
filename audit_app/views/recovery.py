@@ -26,7 +26,7 @@ def recovery_view(config, identifier=''):
             <p>Restore saves a pre-restore backup, then replaces the database. Newer records and changes will be lost. Restart the service and verify login and record counts. Check existing email delivery records before resuming outgoing mail.</p>
             <p class="form-help">A rollback to an older image must use a backup supported by that image and its restore command. After recovery, remove the staged upload from the private restore-uploads directory.</p></div></section>'''
     return f'''<section class="panel admin-panel"><div class="panel-head"><div><h2>Download database backup</h2><p>A consistent snapshot of AuditDesk's persistent records.</p></div></div>
-        <div class="admin-content"><p>Includes listings, contacts, audits, email history, settings, and application access. Store the backup in approved encrypted storage. Integration credentials and the session signing key are not included.</p>
+        <div class="admin-content"><p>Includes listings, contacts, audits, attached paperwork, email history, settings, and application access. Store the backup in approved encrypted storage. Integration credentials and the session signing key are not included.</p>
         <form method="post" action="/manage/backup"><input type="hidden" name="token" value="{retry_token(config, 'backup')}">
         <button type="submit" class="primary-button">Download backup</button></form></div></section>
         <section class="panel admin-panel"><div class="panel-head"><div><h2>Prepare a restore</h2><p>Validate a backup before stopping the service.</p></div></div>

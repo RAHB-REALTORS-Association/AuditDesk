@@ -33,10 +33,34 @@ try:
     # Origin bypass must fail without a signed Access identity.
     denied=docker('exec',name,'python','-c',"import urllib.request,urllib.error\ntry: urllib.request.urlopen('http://127.0.0.1:8765/')\nexcept urllib.error.HTTPError as e: print(e.code)")
     assert denied=='401',denied
+    document_check = """import io
+from pypdf import PdfWriter
+from werkzeug.datastructures import FileStorage
+from audit_app.config import load_config
+from audit_app.database import connect
+from audit_app.documents import upload_document, read_document, document_directory
+config = load_config()
+with connect(config.database_path) as db:
+    db.execute(\"INSERT INTO listings(id,bridge_listing_id,mls_number,status,entry_timestamp,address,first_processed_at,processing_status,originating_system_name,agent_mls_id,agent_membership_class) VALUES(1,'SYNTHETIC','SYNTHETIC','Active','2026','Synthetic address','2026','selected_for_audit','Cornerstone','DEMO-MEMBER','MEMBER')\")
+    db.execute(\"INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,actual_recipients,test_mode,email_status,selection_metadata) VALUES(1,1,'2026','[]','[]','[]',1,'email_sent','{}')\")
+    db.commit()
+writer = PdfWriter()
+writer.add_blank_page(width=612, height=792)
+stream = io.BytesIO()
+writer.write(stream)
+content = stream.getvalue()
+upload_document(config, 1, FileStorage(stream=io.BytesIO(content), filename='synthetic.pdf'))
+row, original = read_document(config, 1, 1)
+assert original == content
+assert (document_directory(config) / row['storage_name']).stat().st_mode & 0o777 == 0o600
+"""
+    docker('exec',name,'python','-c',document_check)
     docker('exec',name,'python','-c',"import sqlite3; db=sqlite3.connect('/app/data/audit.sqlite3'); db.execute(\"UPDATE app_users SET display_name='Survives restart'\"); db.commit(); db.close()")
     docker('restart',name)
     ready()
     assert docker('exec',name,'python','-c',"import sqlite3; db=sqlite3.connect('/app/data/audit.sqlite3'); print(db.execute('SELECT display_name FROM app_users').fetchone()[0]); db.close()")=='Survives restart'
+    assert docker('exec',name,'python','-c',"from audit_app.config import load_config; from audit_app.documents import read_document; row, content=read_document(load_config(),1,1); assert content.startswith(b'%PDF-'); print(row['filename'])")=='synthetic.pdf'
+    print('PASS: private synthetic paperwork and metadata survive persistent restart')
     print('PASS: non-root startup, health, authentication denial, and persistent data after restart')
     docker('rm','-f',name)
     docker('run','-d','--name',name,

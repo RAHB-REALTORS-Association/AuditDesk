@@ -529,12 +529,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-9.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-10.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),9)
+        self.assertEqual(validate(snapshot),10)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -566,7 +566,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),9)
+        self.assertEqual(validate(file),10)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -591,7 +591,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],9)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],10)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)

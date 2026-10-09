@@ -14,6 +14,14 @@ No one receives a role automatically merely by signing in. IT can change or disa
 
 IT can use **Delete person** in **Manage → Access** to remove an account and revoke access. Confirming deletion clears that person's audit assignments while preserving audits, results, email attempts, and activity history. Your own account, bootstrap administrators, and the last active administrator cannot be deleted.
 
+## Attach listing paperwork
+
+Open the audit's result page and use **Paperwork → Attach paperwork**. Reviewers, Audit managers and IT administrators can attach one PDF, PNG or JPEG at a time, up to 20 MiB and 100 pages per file, with at most 50 documents per audit. Remove PDF passwords first. Attachments remain available on completed audits and on requests that have not yet been sent.
+
+The attachment link downloads the original file. Uploading identical bytes again to the same audit does not create another attachment. The saved filename is sanitized; the original file content is preserved. Each upload records its actor and page count in activity history. If records changed while the form was open, refresh before retrying.
+
+Attaching paperwork does not record response receipt, change the deadline, record a result or send a message. Continue to use **Response received** and the existing result controls separately. Phase 0 does not extract or compare document contents. Development previews reject uploaded files and offer **Attach synthetic sample** instead. Keep real paperwork out of preview environments.
+
 ## Refresh corrected listing data
 
 After an upstream data issue has been corrected, open **Audit history**, select up to 20 affected audits, and choose **Refresh selected from MLS**. AuditDesk fetches each listing by its MLS listing key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.

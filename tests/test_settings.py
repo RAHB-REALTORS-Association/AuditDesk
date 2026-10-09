@@ -101,7 +101,7 @@ class SelectionSettingsTests(unittest.TestCase):
         init_db(self.config.database_path)
         init_db(self.config.database_path)
         with connect(self.config.database_path) as db:
-            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 9)
+            self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 10)
         self.assertEqual(selection_percent(self.config), Decimal("12"))
         self.assertEqual(brokerage_cooldown_days(self.config), 14)
 

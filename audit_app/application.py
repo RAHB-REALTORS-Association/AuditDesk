@@ -21,6 +21,7 @@ from . import web
 from .views.errors import error_page
 from .assignment import assign_audits, assign_reviewer
 from .backup import MAX_BACKUP_BYTES, backup, stage_restore
+from .documents import MAX_DOCUMENT_BYTES, attach_sample, read_document, upload_document
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
 from .database import SCHEMA_VERSION, connect, init_db
@@ -84,6 +85,15 @@ def create_app(config=None, verifier=None):
         authenticate(config, verifier)
         session.permanent = True
         recovery_upload = request.path == '/manage/restore' and request.method == 'POST'
+        paperwork_upload = request.endpoint == 'document_upload' and request.method == 'POST'
+        if paperwork_upload:
+            if not allowed('audits.result'):
+                abort(403)
+            if config.env == 'development':
+                abort(400, 'Real paperwork cannot be uploaded in development. Use the synthetic sample.')
+            request.max_content_length = MAX_DOCUMENT_BYTES + 256 * 1024
+            request.max_form_memory_size = 256 * 1024
+            request.max_form_parts = 3
         if request.path in {'/manage/backup', '/manage/restore'}:
             if not allowed('backups.manage'):
                 abort(403, 'Only IT administrators can manage backups and restores.')
@@ -109,7 +119,7 @@ def create_app(config=None, verifier=None):
                     abort(429, "Too many actions. Wait a minute and try again.")
                 bucket.append(now)
         if request.method == "POST":
-            if request.mimetype != ('multipart/form-data' if recovery_upload else "application/x-www-form-urlencoded"):
+            if request.mimetype != ('multipart/form-data' if recovery_upload or paperwork_upload else "application/x-www-form-urlencoded"):
                 abort(415, "Use an application form to submit changes.")
             if any(len(values) != 1 for key, values in request.form.lists()
                    if not (request.path in {"/assignments", "/audits/refresh"} and key == "audit_ids")):
@@ -267,6 +277,28 @@ def create_app(config=None, verifier=None):
             abort(400, 'Choose a valid response action.')
         record_response(config, audit_id, request.form.get('received_at', ''), reopen=action == 'reopen')
         return done('outcome', 'Response timer reopened.' if action == 'reopen' else 'Response received. The response timer has stopped; audit review remains open.', id=audit_id)
+
+    @app.post('/audits/<int:audit_id>/documents')
+    @require('audits.result')
+    def document_upload(audit_id):
+        if set(request.files) != {'document'} or len(request.files.getlist('document')) != 1:
+            abort(400, 'Choose exactly one paperwork file.')
+        _, created = upload_document(config, audit_id, request.files['document'])
+        return done('outcome', 'Paperwork attached.' if created else 'This file is already attached to the audit.', id=audit_id)
+
+    @app.post('/audits/<int:audit_id>/documents/sample')
+    @require('audits.result')
+    def document_sample(audit_id):
+        attach_sample(config, audit_id)
+        return done('outcome', 'Synthetic sample attached.', id=audit_id)
+
+    @app.get('/audits/<int:audit_id>/documents/<int:document_id>')
+    @require('audits.result')
+    def document_download(audit_id, document_id):
+        row, content = read_document(config, audit_id, document_id)
+        from werkzeug.http import dump_options_header
+        return Response(content, mimetype=row['media_type'], headers={
+            'Content-Disposition': dump_options_header('attachment', {'filename': row['filename']})})
 
     @app.post("/users")
     @require("users.manage")
