@@ -19,7 +19,7 @@ from werkzeug.exceptions import HTTPException
 from .board_scope import require_cornerstone_audit
 from . import web
 from .views.errors import error_page
-from .assignment import assign_audits, assign_reviewer
+from .assignment import assign_audits, assign_reviewer, assign_self
 from .backup import MAX_BACKUP_BYTES, backup, stage_restore
 from .brokerage_report import PERIODS, brokerage_statistics
 from .config import development_config, load_config, validate_web_config
@@ -279,6 +279,14 @@ def create_app(config=None, verifier=None):
     def remove_user(user_id):
         delete_user(config, user_id, request.form.get('version',''))
         return done('users', 'Person deleted. Their audits are now unassigned.')
+
+    @app.post('/assignment/<int:item_id>/self')
+    @require('audits.assign_self')
+    def self_assignment(item_id):
+        if set(request.form) != {'token', 'revision'}:
+            abort(400, 'Use Assign to me without choosing another account.')
+        assign_self(config, item_id, g.principal)
+        return done('audits', 'Audit assigned to you.')
 
     @app.post("/assignment/<int:item_id>")
     @require("audits.assign")
