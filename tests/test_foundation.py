@@ -219,6 +219,81 @@ class FoundationTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             self.assertEqual([row[0] for row in db.execute('SELECT assignee_user_id FROM audits')], [None,None,None])
 
+    def test_reviewers_claim_their_own_account_without_assignment_authority(self):
+        self.seed_asana_audits()
+        page = self.get(role='reviewer').text
+        self.assertIn('action="/assignment/3/self"', page)
+        self.assertNotIn('action="/assignment/1/self"', page)
+        self.assertNotIn('action="/assignment/2/self"', page)
+        self.assertNotIn('name="assignee_user_id"', page)
+        self.assertEqual(self.post('/assignment/3/self', {'assignee_user_id': '1'}, role='reviewer').status_code, 400)
+        self.assertEqual(self.post('/assignment/3/self', {}, role='reviewer').status_code, 303)
+        with connect(self.config.database_path) as db:
+            reviewer = db.execute("SELECT id FROM app_users WHERE subject='reviewer'").fetchone()[0]
+            row = db.execute('SELECT assignee_user_id,outcome,response_received_at,email_status FROM audits WHERE id=3').fetchone()
+            self.assertEqual(tuple(row), (reviewer, None, None, 'email_sent'))
+            history = db.execute("SELECT actor,target,detail FROM activity_events WHERE action='audit.assigned'").fetchall()
+            self.assertEqual([tuple(row) for row in history], [('reviewer', '3', str(reviewer))])
+        page = self.get(role='reviewer').text
+        self.assertNotIn('action="/assignment/3/self"', page)
+        self.assertIn('reviewer@example.com', page)
+        self.assertIn('In Progress', page)
+        self.assertEqual(self.post('/assignment/3', {'assignee_user_id': ''}, role='reviewer').status_code, 403)
+        self.assertEqual(self.post('/assignments', {'audit_ids': ['3'], 'assignee_user_id': '1'}, role='reviewer').status_code, 403)
+
+    def test_self_assignment_prevents_takeovers_completed_work_and_stale_claims(self):
+        self.seed_asana_audits()
+        reviewer_page = self.get(role='reviewer').text
+        revision = re.search(r'name="revision" value="(\d+)"', reviewer_page)[1]
+        self.assertEqual(self.post('/assignment/3/self', {}, role='manager').status_code, 303)
+        self.assertEqual(self.post('/assignment/3/self', {'revision': revision}, role='reviewer').status_code, 409)
+        self.assertEqual(self.post('/assignment/3/self', {}, role='reviewer').status_code, 409)
+        for number in (1, 2):
+            self.assertEqual(self.post(f'/assignment/{number}/self', {}, role='reviewer').status_code, 409)
+        with connect(self.config.database_path) as db:
+            manager = db.execute("SELECT id FROM app_users WHERE subject='manager'").fetchone()[0]
+            self.assertEqual(db.execute('SELECT assignee_user_id FROM audits WHERE id=3').fetchone()[0], manager)
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='audit.assigned'").fetchone()[0], 1)
+
+    def test_self_assignment_preserves_identity_csrf_origin_and_scope_checks(self):
+        self.seed_asana_audits()
+        path = '/assignment/3/self'
+        self.assertEqual(self.client.post(path, base_url=self.config.public_url, data={}).status_code, 401)
+        self.assertEqual(self.post(path, {'token': 'wrong'}, role='reviewer').status_code, 403)
+        self.assertEqual(self.post(path, {}, role='reviewer', Origin='https://evil.invalid').status_code, 403)
+        from audit_app.security import CAPABILITIES
+        with patch.dict(CAPABILITIES, {'reviewer': frozenset({'audits.read', 'audits.result'})}):
+            self.assertEqual(self.post(path, {}, role='reviewer').status_code, 403)
+        for board, member in (('OTHER', 'MEMBER'), (None, 'MEMBER'), ('Cornerstone', 'NONMEM')):
+            with connect(self.config.database_path) as db:
+                db.execute('UPDATE listings SET originating_system_name=?,agent_mls_id=? WHERE id=3', (board, member))
+                db.commit()
+            self.assertEqual(self.post(path, {}, role='reviewer').status_code, 400)
+        self.assertEqual(self.post('/assignment/999/self', {}, role='reviewer').status_code, 400)
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE app_users SET active=0 WHERE subject='reviewer'")
+            db.commit()
+        self.assertEqual(self.post(path, {}, role='reviewer').status_code, 403)
+        with connect(self.config.database_path) as db:
+            self.assertIsNone(db.execute('SELECT assignee_user_id FROM audits WHERE id=3').fetchone()[0])
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='audit.assigned'").fetchone()[0], 0)
+
+    def test_self_assignment_works_in_disposable_development(self):
+        app = create_app(replace(self.config, env='development'))
+        self.addCleanup(app.extensions['auditdesk_sandbox'].cleanup)
+        config = app.extensions['auditdesk_config']
+        client = app.test_client()
+        page = client.get('/', base_url=config.public_url).text
+        audit = re.search(r'action="/assignment/(\d+)/self"', page)[1]
+        token = re.search(r'name="token" value="([^"]+)"', page)[1]
+        revision = re.search(r'name="revision" value="(\d+)"', page)[1]
+        response = client.post(f'/assignment/{audit}/self', base_url=config.public_url,
+            headers={'Origin': config.public_url}, data={'token': token, 'revision': revision})
+        self.assertEqual(response.status_code, 303)
+        with connect(config.database_path) as db:
+            user = db.execute('SELECT u.email FROM audits a JOIN app_users u ON u.id=a.assignee_user_id WHERE a.id=?', (audit,)).fetchone()
+            self.assertEqual(user['email'], 'developer@example.invalid')
+
     def test_stale_bulk_assignment_changes_nothing(self):
         run_job(self.config, FakeClient([listing('1')]),now=NOW,sender=lambda *args:'fake')
         page=self.get()

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — reviewer self-assignment
+
+- Let reviewers claim unassigned, unfinished audits using **Assign to me** in Audit history. Resolve the assignee from authenticated identity, reject competing claims and completed work, and record the assignment in activity history.
+- Keep assigning other accounts, clearing assignments and reassigning existing work restricted to Audit managers and IT administrators. No schema or configuration change.
+
 ## Unreleased — broker contact recovery
 
 - Resolve missing broker contacts from qualified active office roster members and explicit head-office links. Prefer Brokers of Record before Broker Managers; keep ambiguous, inactive or invalid contacts blocked and bound roster/parent traversal.

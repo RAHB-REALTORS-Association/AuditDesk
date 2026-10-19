@@ -6,7 +6,7 @@ Open the AuditDesk HTTPS address and sign in through Cloudflare Access. If ident
 
 | Role | Capabilities |
 | --- | --- |
-| Reviewer | View shared audits/listings/runs, refresh unsent audit data, record pass/fail results, retry failed emails, read reports and export brokerage PDFs |
+| Reviewer | View shared audits/listings/runs, assign unassigned unfinished audits to themselves, refresh unsent audit data, record pass/fail results, retry failed emails, read reports and export brokerage PDFs |
 | Audit manager | Reviewer capabilities plus individual/bulk assignments, selection percentage and email templates |
 | IT administrator | Manager capabilities plus access management and activity-log export |
 
@@ -45,7 +45,7 @@ Use **Filters & columns → Broker response** to find overdue requests, requests
 Reviewers can select **Response received** on a row to record receipt now. To enter an earlier actual receipt time, open **Record result** and use the optional office-time field in the Broker response section. Receipt stops the response clock while audit review remains open. It shows whether receipt was within 24 hours or after the deadline. **Reopen response timer** clears an incorrect receipt without changing the original deadline. Activity history records these changes. Recording a result also removes an audit from the open-response queue; it does not invent a receipt timestamp.
 
 1. Review Audit history. Selected listings, intended/actual recipients, delivery state, reviewer, and outcome are shown together.
-2. A manager assigns a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
+2. Choose **Assign to me** in the **Assigned to** column to claim an unassigned unfinished audit, or have a manager assign a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
 3. Once the original request is accepted by SendGrid, choose Record result. A pass records the result without another email. For a failure, describe the issues, preview the notice, then record and send. Each audit receives one result.
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
 5. Use daily and brokerage reports for the app's intake history. Missing intake is not a zero day, and rates exclude pending results where appropriate. PDF export reflects the selected period.
@@ -95,7 +95,9 @@ Edit the follow-up wording under **Manage → Failed-audit email**. Its subject 
 
 ## Track who is working on an audit
 
-IT manages accounts and roles under **Manage → Access**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. In **Audit history**, choose an account in the **Assigned to** dropdown and save.
+Any active reviewer, Audit manager or IT administrator can use **Assign to me** in **Audit history** for an unassigned, unfinished audit. The server uses the signed-in account; reviewers cannot choose another person, take over assigned work or clear assignments. The button disappears after assignment. If someone claims or changes the audit while the page is open, refresh before retrying. Completed audits cannot be claimed. Claiming an audit records the actor in activity history and does not send mail, change response receipt/deadlines or record a result.
+
+IT manages accounts and roles under **Manage → Access**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. Audit managers and IT administrators can choose an account in the **Assigned to** dropdown and save to assign or reassign work.
 
 For bulk assignment, select audit rows with their checkboxes, or use the heading checkbox to select all displayed audits (up to the latest 200). The toolbar shows the selection count. Choose an account under **Assign selected to**, then select **Apply to selected**. Choose **Unassigned — clear assignment** to remove assignments from the selected rows. **Clear selection** unchecks rows without changing their assignments. Selection survives table sorting, but resets after saving or refreshing.
 
