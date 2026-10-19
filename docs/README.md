@@ -11,5 +11,6 @@ Start with the [project README](../README.md) for the product overview and local
 | Set up development, run checks, or open a pull request | [Contributing](../CONTRIBUTING.md) |
 | Report a vulnerability privately | [Security policy](../SECURITY.md) |
 | Review unreleased changes | [Changelog](../CHANGELOG.md) |
+| Review Phase 0 paperwork ingestion and the inbound-email proposal | [Phase 0 report](PHASE_0_REPORT.md) |
 
 [Historical project context](PROJECT_CONTEXT.md) preserves the original deployment handoff and investigation notes. It is a dated reference; use the guides above and current deployment settings for operations.

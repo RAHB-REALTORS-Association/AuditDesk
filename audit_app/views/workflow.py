@@ -8,6 +8,7 @@ from ..emailer import EmailError, resolve_recipients
 from ..templates import current_failure_templates, format_message_parts
 from .common import badge, esc, local_time, retry_token
 from .deadlines import deadline_view, response_form
+from .documents import paperwork_view
 
 
 def asana_handoff(config, data):
@@ -38,6 +39,7 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
     if not row:
         return '<section class="panel outcome-panel">Audit not found.</section>'
     data = dict(row)
+    paperwork = paperwork_view(config, audit_id)
     response = '<div class="response-summary"><h3>Broker response</h3>' + deadline_view(config, data) + response_form(config, data, detailed=True) + '</div>'
     heading = f'<div class="panel-head"><div><h2>MLS {esc(data["mls_number"])} · {esc(data["address"])}</h2><p>{esc(data["brokerage_name"])} · {esc(data["broker_name"])}</p></div></div>'
     if data["outcome"]:
@@ -48,9 +50,9 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
             details += f'<h3>Issues recorded</h3><pre class="outcome-issues">{html.escape(data["issues"] or "")}</pre><p>Follow-up notice: {badge(data["failure_email_status"] or "email_pending")}</p>'
             if data["failure_last_error"]:
                 details += f'<p class="error">{esc(data["failure_last_error"])}</p>'
-        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}<a href="/?tab=audits">Back to audit history</a></div></section>'
+        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}{paperwork}<a href="/?tab=audits">Back to audit history</a></div></section>'
     if data["email_status"] != "email_sent":
-        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">Send the original audit request before recording its result.</div></section>'
+        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">Send the original audit request before recording its result.{paperwork}</div></section>'
     token = retry_token(config, f"outcome:{audit_id}")
     preview_html = ""
     if preview and issues.strip():
@@ -71,6 +73,7 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
     return f'''<section class="panel outcome-panel">{heading}<div class="outcome-content">
         {'<div class="form-error" role="alert">'+html.escape(error)+'</div>' if error else ''}
         {response}
+        {paperwork}
         <form method="post" action="/outcome/{audit_id}" class="pass-form"><input type="hidden" name="token" value="{token}"><input type="hidden" name="outcome" value="passed"><button type="submit" name="action" value="record">Mark passed</button></form>
         <form method="post" action="/outcome/{audit_id}" class="failure-form"><input type="hidden" name="token" value="{token}"><input type="hidden" name="outcome" value="failed">
         <label for="issues">If the audit failed, describe each issue</label><textarea id="issues" name="issues" maxlength="5000" rows="7" placeholder="Describe the missing, incorrect, or incomplete items">{html.escape(issues)}</textarea>

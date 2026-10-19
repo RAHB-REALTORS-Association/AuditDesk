@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -137,6 +137,27 @@ CREATE TABLE IF NOT EXISTS failure_email_attempts (
 CREATE INDEX IF NOT EXISTS idx_audits_brokerage ON audits(brokerage_id, selected_at);
 CREATE INDEX IF NOT EXISTS idx_audits_broker ON audits(broker_id, selected_at);
 CREATE INDEX IF NOT EXISTS idx_audits_selected_at ON audits(selected_at);
+CREATE TABLE IF NOT EXISTS audit_documents (
+  id INTEGER PRIMARY KEY,
+  audit_id INTEGER NOT NULL REFERENCES audits(id),
+  storage_name TEXT NOT NULL UNIQUE,
+  filename TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  byte_count INTEGER NOT NULL CHECK(byte_count > 0),
+  sha256 TEXT NOT NULL,
+  page_count INTEGER NOT NULL CHECK(page_count BETWEEN 1 AND 100),
+  uploaded_at TEXT NOT NULL,
+  uploaded_by TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('reviewer_upload','synthetic')),
+  test_mode INTEGER NOT NULL CHECK(test_mode IN (0,1)),
+  UNIQUE(audit_id, sha256)
+);
+CREATE TABLE IF NOT EXISTS document_pages (
+  id INTEGER PRIMARY KEY,
+  document_id INTEGER NOT NULL REFERENCES audit_documents(id),
+  page_number INTEGER NOT NULL CHECK(page_number BETWEEN 1 AND 100),
+  UNIQUE(document_id, page_number)
+);
 """
 
 

@@ -154,7 +154,7 @@ class EligibilityTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             self.assertEqual(dict(db.execute('SELECT * FROM audits').fetchone()), original)
             self.assertIsNone(db.execute('SELECT agent_membership_class FROM listings').fetchone()[0])
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 9)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 10)
         client = Mock(); client._one.return_value = {'MemberMlsSecurityClass':'NL7'}
         with patch('audit_app.job.send_email') as sender:
             self.assertEqual(backfill_membership_classes(self.config, client), {'checked':1,'verified':1,'unverified':0})
