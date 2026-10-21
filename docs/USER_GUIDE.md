@@ -32,7 +32,17 @@ A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX bann
 
 Audit managers and IT administrators configure **Manage → Hours & holidays**. Set opening and closing times for each weekday; leave both blank for closed days. Defaults are 8:30 a.m.–4:30 p.m., Monday–Friday, in the deployment's office timezone (normally America/Toronto). Enter holidays, observed holidays, and full-day closures as YYYY-MM-DD dates, one per line. No holidays are imported automatically.
 
-Daily intake and selection still consider weekend and holiday listings. Original requests send only when the office is open **and the deadline 24 elapsed hours later is also within office hours**. With default hours, requests can send Monday–Thursday; Friday/weekend requests wait until Monday. A Monday holiday postpones that window to Tuesday. A holiday also blocks requests on the preceding day when their deadline would fall on the closure. Different daily hours narrow the allowed window accordingly.
+Daily intake and selection still consider weekend and holiday listings. Configure **Allowed request-send days** independently from office opening days. A request sends only on a selected weekday, within office hours and outside holidays. All weekdays are allowed by default, so existing office hours still control which days can send. Clear every send day to pause request delivery without stopping intake. These settings do not change failure-notice delivery.
+
+Set **Response period** to 1–30 days and choose a **Deadline policy**:
+
+- **Strict elapsed days** counts 24 elapsed hours per day and sends only if the resulting deadline is in office hours. The default is one day: with Monday–Friday office hours, sending is effectively Monday–Thursday. DST can shift the deadline's local clock time.
+- **Elapsed days, next opening** first waits the selected number of 24-hour periods, then moves a deadline outside office hours or on a closure to the next opening.
+- **Business days** counts office-open dates, skipping closed weekdays and holidays, then uses the local send time on the target date. A target time before opening or at/after closing moves forward to the next opening. Response days use the office calendar, regardless of which weekdays allow sending. Local clock time is preserved across DST where possible; nonexistent times advance past the clock gap, and repeated times use their first occurrence.
+
+For one-day requests sent Friday at 10 a.m., with Monday–Friday 8:30–16:30 hours and no holiday: strict mode holds the request; next-opening mode permits Friday sending and sets Monday 8:30 a.m.; business-day mode sets Monday 10 a.m. Select Friday as an allowed send day to use the latter options. Existing behavior stays the default until a manager changes it.
+
+Outgoing original requests include a response-period policy summary in both plain and rich email. Review saved request-template wording if it mentions a fixed 24-hour limit before changing the response policy.
 
 The enabled scheduler checks the pending queue every five minutes, even after that day's intake has completed. Explicit failures require Retry email; retrying outside a suitable window queues the corrected request. Email enablement, test routing, and uncertain-delivery safeguards still apply. Calendar changes affect queued requests and never move deadlines for sent requests. Failed-audit follow-up notices retain their existing manual workflow.
 

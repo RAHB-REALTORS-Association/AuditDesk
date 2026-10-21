@@ -96,7 +96,7 @@ Test/production require an explicit HTTPS origin. See [Deployment](DEPLOYMENT.md
 
 ## Office availability
 
-Weekly office hours and explicit holiday/full-day closure dates are managed in the database under **Manage → Hours & holidays**, rather than environment variables. Defaults are 08:30–16:30 Monday–Friday; no holidays are assumed. `APP_TIMEZONE` is also the office calendar timezone. Request delivery requires both the send time and its 24-hour deadline to fall in open hours. `SCHEDULER_ENABLED` must be true for queued requests to drain automatically; `EMAIL_ENABLED` and test-window protections still apply. Sent deadlines are fixed and survive calendar changes.
+Weekly office hours and explicit holiday/full-day closure dates are managed in the database under **Manage → Hours & holidays**, rather than environment variables. Defaults are 08:30–16:30 Monday–Friday; no holidays are assumed. `APP_TIMEZONE` is also the office calendar timezone. Allowed request-send weekdays, the response period (1–30 days), and deadline policy are also managed on this page. Defaults allow every weekday subject to office availability and require the strict 24-hour deadline to be in office hours. Optional policies roll elapsed-day deadlines to the next opening or count office-open business dates at the local send time. Unchecking every send day pauses requests while intake continues. `SCHEDULER_ENABLED` must be true for queued requests to drain automatically; `EMAIL_ENABLED` and test-window protections still apply. Sent deadlines are fixed and survive calendar changes.
 
 ## Listing eligibility
 

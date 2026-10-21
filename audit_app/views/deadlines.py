@@ -13,7 +13,7 @@ def deadline_view(config, audit, now=None, next_send=None):
     if audit['response_received_at']:
         due = audit['response_due_at'] or (datetime.fromisoformat(audit['email_sent_at'].replace('Z', '+00:00')) + timedelta(hours=24)).isoformat()
         late = datetime.fromisoformat(audit['response_received_at'].replace('Z', '+00:00')) > datetime.fromisoformat(due.replace('Z', '+00:00'))
-        return badge('response_received') + f'<small>{esc(local_time(audit["response_received_at"], config.timezone))} · {"After deadline" if late else "Within 24 hours"}</small><small>Awaiting audit review</small>'
+        return badge('response_received') + f'<small>{esc(local_time(audit["response_received_at"], config.timezone))} · {"After deadline" if late else "Within deadline"}</small><small>Awaiting audit review</small>'
     if audit['email_status'] != 'email_sent' or not audit['email_sent_at']:
         label = 'Delivery uncertain · timer unavailable' if audit['email_status'] == 'email_unknown' else 'Not sent · timer not started'
         hint = f'<small>Next request window: {esc(local_time(next_send.isoformat(), config.timezone))}</small>' if audit['email_status'] == 'email_pending' and next_send and config.email_enabled else ''

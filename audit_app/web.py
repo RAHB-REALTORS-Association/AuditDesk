@@ -10,6 +10,7 @@ from .asana import follow_up
 from .assignment import can_audit, eligible_assignees
 from .database import connect
 from .office_calendar import next_request_time, read_calendar
+from .request_schedule import read_policy
 from .views.actions import action_button, action_link
 from .views.eligibility import eligibility_view
 from .views.deadlines import deadline_view, response_form
@@ -49,7 +50,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND a.email_status='email_sent'
             AND a.outcome IS NULL AND a.response_received_at IS NULL
             AND julianday(COALESCE(a.response_due_at,datetime(a.email_sent_at,'+24 hours'))) <= julianday(?)""", (now.isoformat(),)).fetchone()[0]
-        next_send = next_request_time(now, config.timezone, read_calendar(config, db)) if tab == 'audits' else None
+        next_send = next_request_time(now, config.timezone, read_calendar(config, db), read_policy(config, db)) if tab == 'audits' else None
         audits, listings, runs = [], [], []
         reviewers = eligible_assignees(db)
         if tab == "audits":

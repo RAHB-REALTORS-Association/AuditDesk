@@ -5,12 +5,18 @@ from flask import g, has_request_context
 from ..database import connect
 from ..lists import query_page
 from ..office_calendar import DAY_NAMES, read_calendar
+from ..request_schedule import DEADLINE_MODES, read_policy
 from ..settings import brokerage_cooldown_days, display_percent, selection_percent, workflow_config
 from .common import esc, retry_token, sort_heading
 
 
 def calendar_view(config, values=None, error=''):
     hours, holidays = read_calendar(config)
+    policy = read_policy(config)
+    send_days = ''.join(f'<label><input type="checkbox" name="send_{day}" value="1" {"checked" if (values.get(f"send_{day}") == "1" if values is not None else day in policy.send_days) else ""}>{label}</label>' for day, label in enumerate(DAY_NAMES))
+    mode = values.get('deadline_mode', '') if values is not None else policy.deadline_mode
+    response_days = values.get('response_days', '') if values is not None else str(policy.response_days)
+    modes = ''.join(f'<option value="{key}" {"selected" if key == mode else ""}>{esc(label)}</option>' for key, label in DEADLINE_MODES.items())
     rows = ''
     for day, label in enumerate(DAY_NAMES):
         start, end = hours[day] or ('', '')
@@ -20,8 +26,14 @@ def calendar_view(config, values=None, error=''):
     holiday_text = values.get('holidays', '') if values is not None else '\n'.join(sorted(holidays))
     return f'''<section class="panel admin-panel"><div class="panel-head"><div><h2>Office hours &amp; holidays</h2><p>Request delivery and broker response availability · {esc(config.timezone)}</p></div></div>
         <div class="admin-content">{'<p class="form-error" role="alert">'+esc(error)+'</p>' if error else ''}
-        <p>Listings are considered every day, including weekends and holidays. Requests wait until the office is open and their 24-hour deadline also falls during office hours. With Monday–Friday hours, Friday requests wait until Monday.</p>
+        <p>Listings are considered every day. Choose when requests may send and how their response deadlines use the office calendar. Existing sent deadlines stay fixed.</p>
         <form method="post" action="/manage/calendar" class="office-calendar-form"><input type="hidden" name="token" value="{retry_token(config, 'calendar')}">
+        <fieldset class="request-send-days"><legend>Allowed request-send days</legend>{send_days}</fieldset>
+        <p class="form-help">Requests also require office hours and cannot send on a holiday. Uncheck all days to pause request delivery without stopping listing collection.</p>
+        <label for="response-days">Response period (days)<input id="response-days" name="response_days" type="number" min="1" max="30" step="1" required value="{html.escape(response_days, quote=True)}"></label>
+        <label for="deadline-mode">Deadline policy<select id="deadline-mode" name="deadline_mode">{modes}</select></label>
+        <p class="form-help">Strict elapsed days count 24 hours each, including weekends: a one-day Friday request waits if Saturday is closed. Roll forward keeps that elapsed period, then moves a closed deadline to the next opening. Business days skip closed weekdays and holidays, preserving the local send time; if that time is outside office hours, the deadline moves to the next opening. Send-day choices do not restrict response days.</p>
+        <p class="form-help">For a one-day Friday 10 a.m. request with Monday–Friday hours and no holidays: strict mode waits to send, roll forward is due Monday at opening, and business days is due Monday at 10 a.m. Defaults preserve strict one-day behavior.</p>
         <div class="office-hours">{rows}</div><p class="form-help">Leave both times blank for closed days. Use same-day opening and closing times.</p>
         <label for="holiday-dates">Holidays and office closures<textarea id="holiday-dates" name="holidays" rows="6" maxlength="5000" placeholder="2026-12-25">{html.escape(holiday_text)}</textarea></label>
         <p class="form-help">One YYYY-MM-DD date per line. Include observed holidays and any other full-day closures. No holidays are assumed automatically.</p>
