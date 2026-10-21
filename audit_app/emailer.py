@@ -5,7 +5,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from .database import connect
-from .templates import current_failure_templates, current_templates, format_message_parts
+from .templates import current_failure_templates, current_templates, format_message_parts, plain_to_html
 
 
 class EmailError(Exception):
@@ -51,7 +51,12 @@ def message_content(listing, config, intended_to, intended_cc):
 def message_parts(listing, config, intended_to, intended_cc):
     subject_template, body_template, _, body_format = current_templates(config)
     try:
-        return format_message_parts(subject_template, body_template, listing, config.test_mode, intended_to, intended_cc, body_format)
+        subject, body, rich = format_message_parts(subject_template, body_template, listing, config.test_mode, intended_to, intended_cc, body_format)
+        if listing.get('response_policy'):
+            note = '\n\n' + listing['response_policy'] + ' Office timezone: ' + config.timezone + '.'
+            body += note
+            rich += plain_to_html(note)
+        return subject, body, rich
     except ValueError as exc:
         raise EmailError(str(exc)) from None
 

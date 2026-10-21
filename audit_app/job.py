@@ -15,7 +15,8 @@ from .bridge import ResoClient, ResoError
 from .database import connect, init_db
 from .emailer import EmailError, resolve_recipients, send_email, utcnow
 from .settings import brokerage_cooldown_days, selection_percent, workflow_config
-from .office_calendar import can_send_request, read_calendar
+from .office_calendar import can_send_request, read_calendar, response_deadline
+from .request_schedule import read_policy, response_period_text
 
 
 LOG = logging.getLogger("audit_app")
@@ -122,11 +123,13 @@ def deliver_audit(config, audit_id, retry=False, sender=None, now=None):
             db.commit()
             return False
         moment = now or datetime.now(timezone.utc)
-        if not can_send_request(moment, config.timezone, read_calendar(config, db)):
+        calendar = read_calendar(config, db)
+        policy = read_policy(config, db)
+        if not can_send_request(moment, config.timezone, calendar, policy):
             if retry:
                 db.execute("UPDATE audits SET email_status='email_pending',last_error=NULL WHERE id=?", (audit_id,))
                 db.execute("UPDATE listings SET processing_status='email_pending' WHERE id=?", (audit['listing_id'],))
-                event(db, 'request_email.queued', audit_id, 'Waiting for office availability and a staffed 24-hour deadline')
+                event(db, 'request_email.queued', audit_id, 'Waiting for allowed send days, office availability and the response deadline policy')
                 db.commit()
             return False
         db.execute("UPDATE audits SET email_status='email_sending', intended_to=?, intended_cc=?, actual_recipients=?, test_mode=?, last_error=NULL WHERE id=?",
@@ -137,6 +140,7 @@ def deliver_audit(config, audit_id, retry=False, sender=None, now=None):
         attempt_id = cursor.lastrowid
         event(db, "request_email.started", audit_id)
         db.commit()
+    listing['response_policy'] = response_period_text(policy)
     try:
         message_id = (sender or send_email)(config, listing, audit_id, intended_to, intended_cc, actual)
     except EmailError as exc:
@@ -151,7 +155,7 @@ def deliver_audit(config, audit_id, retry=False, sender=None, now=None):
     with connect(config.database_path) as db:
         accepted = now or datetime.now(timezone.utc)
         db.execute("UPDATE audits SET email_status='email_sent', email_sent_at=?, response_due_at=?, sendgrid_message_id=? WHERE id=?",
-                   (accepted.isoformat(timespec='seconds'), (accepted + timedelta(hours=24)).isoformat(timespec='seconds'), message_id, audit_id))
+                   (accepted.isoformat(timespec='seconds'), response_deadline(accepted, config.timezone, calendar, policy).isoformat(timespec='seconds'), message_id, audit_id))
         db.execute("UPDATE listings SET processing_status='email_sent' WHERE id=?", (audit["listing_id"],))
         db.execute("UPDATE email_attempts SET completed_at=?, status='email_sent', sendgrid_message_id=? WHERE id=?", (utcnow(), message_id, attempt_id))
         db.commit()
@@ -165,7 +169,7 @@ def drain_pending_requests(config, now=None, sender=None):
     if config.env == 'development' or not config.email_enabled or not config.test_window_open(moment):
         return
     with connect(config.database_path) as db:
-        if not can_send_request(moment, config.timezone, read_calendar(config, db)):
+        if not can_send_request(moment, config.timezone, read_calendar(config, db), read_policy(config, db)):
             return
         ids = [row[0] for row in db.execute("SELECT id FROM audits WHERE email_status='email_pending' AND outcome IS NULL ORDER BY selected_at,id")]
     for audit_id in ids:

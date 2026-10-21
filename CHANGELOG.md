@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — configurable request days and deadlines
+
+- Add independent send-weekday controls, a 1–30 day response period, and strict elapsed, next-opening, or business-day deadline policies under Hours & holidays. Defaults preserve the existing one-day behavior; calendar closures still govern availability.
+- Apply the saved policy to queued requests, retries and next-window hints; freeze each accepted request's deadline using its send-time policy snapshot. Include the response-period policy in outgoing requests and label received responses against their stored deadline.
+- Add the request-schedule singleton in schema 11, preserving existing office hours, holidays and sent records. Schema 10 is reserved for the separate paperwork-ingestion PR.
+
 ## Unreleased — reviewer self-assignment
 
 - Let reviewers claim unassigned, unfinished audits using **Assign to me** in Audit history. Resolve the assignee from authenticated identity, reject competing claims and completed work, and record the assignment in activity history.

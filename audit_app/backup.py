@@ -36,6 +36,8 @@ def validate(path):
                 'runs': 'id,started_at,finished_at,status,fetched_count,new_count,selected_count,error',
                 'email_attempts': 'id,audit_id,attempted_at,status,actual_recipients',
             }
+            if version >= 11:
+                required['request_schedule'] = 'id,send_days,response_days,deadline_mode,updated_at'
             for table, columns in required.items():
                 kind = db.execute('SELECT type FROM sqlite_master WHERE name=?', (table,)).fetchone()
                 if not kind or kind[0] != 'table':

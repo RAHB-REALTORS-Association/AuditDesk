@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -88,6 +88,13 @@ CREATE TABLE IF NOT EXISTS office_calendar (
   id INTEGER PRIMARY KEY CHECK(id = 1),
   weekly_hours TEXT NOT NULL,
   holidays TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS request_schedule (
+  id INTEGER PRIMARY KEY CHECK(id = 1),
+  send_days TEXT NOT NULL,
+  response_days INTEGER NOT NULL CHECK(response_days BETWEEN 1 AND 30),
+  deadline_mode TEXT NOT NULL CHECK(deadline_mode IN ('elapsed','next_open','business_days')),
   updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS email_attempts (
