@@ -20,7 +20,7 @@ Windows activation is `.venv\Scripts\Activate.ps1`. Development uses disposable 
 
 `requirements.txt` defines permitted dependency ranges; `requirements.lock` pins runtime and transitive dependencies used by CI and Docker. Dependency changes should update both as appropriate, review the resulting pins, and verify with the lock file.
 
-Dependabot groups Python version updates into one weekly PR and security updates into a separate group. Both dependency files must remain consistent; a range-only update does not change the installed runtime.
+Dependabot groups Python version updates into one weekly PR and security updates into a separate group. GitHub Actions updates follow the same grouping, separately from Python. Both Python dependency files must remain consistent; a range-only update does not change the installed runtime.
 
 ## Commands
 
