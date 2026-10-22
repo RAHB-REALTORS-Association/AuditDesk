@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — GitHub Actions dependency consolidation
+
+- Consolidate five Dependabot updates across verification and release workflows: Checkout v7, Setup Python v6, Buildx v4, Docker Login v4, and Build Push v7.
+- Group future GitHub Actions version updates into one weekly PR and security updates separately.
+
 ## Unreleased — security alerts and dependency consolidation
 
 - Sanitize staged restore filenames, enforce staging-directory containment, and reject symlinked staging directories. Escape SQLite file URIs so recovery also works in paths containing URI punctuation.
