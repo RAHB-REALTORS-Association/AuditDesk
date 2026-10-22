@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — security alerts and dependency consolidation
+
+- Sanitize staged restore filenames, enforce staging-directory containment, and reject symlinked staging directories. Escape SQLite file URIs so recovery also works in paths containing URI punctuation.
+- Escape the Asana hostname dots in the handoff regression test.
+- Consolidate the five pending Python dependency updates: FileLock 4.2.4, Gunicorn 26.2.0, ReportLab 5.0.1, tzdata 2026.5, and a PyJWT minimum of 2.15.1 (already pinned). Update runtime pins and group future Dependabot version/security updates separately.
+
 ## Unreleased — configurable request days and deadlines
 
 - Add independent send-weekday controls, a 1–30 day response period, and strict elapsed, next-opening, or business-day deadline policies under Hours & holidays. Defaults preserve the existing one-day behavior; calendar closures still govern availability.

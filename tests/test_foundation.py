@@ -474,7 +474,7 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('Create Asana task',self.get().text)
         self.assertIn('Link task / copy details',self.get().text)
         self.assertIn('https://app.asana.com/0/-/create_task?',self.get().text)
-        draft=unescape(re.search(r'href="(https://app.asana.com/0/-/create_task[^"]+)"',page)[1])
+        draft=unescape(re.search(r'href="(https://app\.asana\.com/0/-/create_task[^"]+)"',page)[1])
         query=parse_qs(urlsplit(draft).query)
         self.assertIn('MLS 1',query['name'][0])
         self.assertIn('Missing document <check> & details',query['notes'][0])

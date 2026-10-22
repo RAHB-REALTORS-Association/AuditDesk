@@ -9,6 +9,7 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
+from werkzeug.utils import secure_filename
 
 from .database import SCHEMA_VERSION, connect, init_db
 from .job import job_lock
@@ -22,7 +23,7 @@ def validate(path):
         with open(path, 'rb') as source:
             if source.read(16) != b'SQLite format 3\x00':
                 raise ValueError('Choose an AuditDesk SQLite backup file.')
-        with closing(sqlite3.connect(f"file:{Path(path).resolve()}?mode=ro", uri=True)) as db:
+        with closing(sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)) as db:
             db.execute('PRAGMA trusted_schema=OFF')
             db.execute('PRAGMA query_only=ON')
             if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok" or db.execute("PRAGMA foreign_key_check").fetchone():
@@ -57,11 +58,16 @@ def _check_administrator(config, path):
 def restore_details(config, identifier):
     if not re.fullmatch(r'[0-9a-f]{32}', identifier):
         raise ValueError('Choose a validated restore upload.')
-    path = Path(config.database_path).resolve().parent / 'restore-uploads' / (identifier + '.sqlite3')
-    if not path.is_file() or path.is_symlink():
+    directory = Path(config.database_path).resolve().parent / 'restore-uploads'
+    # Keep the HTTP-selected filename safe independently of the token format check.
+    path = directory / secure_filename(identifier + '.sqlite3')
+    if directory.is_symlink() or path.is_symlink() or not path.is_file():
         raise ValueError('Restore upload is unavailable. Upload the backup again.')
+    path = path.resolve()
+    if not path.is_relative_to(directory.resolve()):
+        raise ValueError('Restore upload is outside the staging directory.')
     version = validate(path)
-    with closing(sqlite3.connect(f'file:{path}?mode=ro', uri=True)) as db:
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as db:
         counts = {table: db.execute(f'SELECT count(*) FROM {table}').fetchone()[0]
                   for table in ('listings', 'audits', 'runs')}
     with path.open('rb') as source:
@@ -75,6 +81,8 @@ def stage_restore(config, stream):
     if config.env == 'development':
         raise ValueError('Backup and restore are unavailable in the disposable development sandbox.')
     directory = Path(config.database_path).resolve().parent / 'restore-uploads'
+    if directory.is_symlink():
+        raise ValueError('Restore staging directory must not be a symbolic link.')
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     identifier = secrets.token_hex(16)
     path = directory / (identifier + '.sqlite3')
@@ -147,7 +155,7 @@ def restore(config, source, confirmation):
             fd, temp = tempfile.mkstemp(prefix='.restore-', dir=live.parent)
             os.close(fd)
             try:
-                with closing(sqlite3.connect(f"file:{source}?mode=ro", uri=True)) as original, closing(sqlite3.connect(temp)) as output:
+                with closing(sqlite3.connect(source.as_uri() + '?mode=ro', uri=True)) as original, closing(sqlite3.connect(temp)) as output:
                     original.backup(output)
                 init_db(temp)
                 validate(temp)
