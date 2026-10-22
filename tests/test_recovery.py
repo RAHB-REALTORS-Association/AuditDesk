@@ -59,6 +59,44 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(list((Path(self.temp.name)/'restore-uploads').iterdir()),[])
         self.assertEqual(validate(self.config.database_path),11)
 
+    def test_restore_identifiers_cannot_select_paths_outside_staging(self):
+        identifier = stage_restore(self.config, io.BytesIO(self.snapshot.read_bytes()))
+        for value in ('../' + identifier, '/' + identifier, identifier + '/..',
+                      identifier + '?mode=rw', identifier + '\x00', 'A' * 32):
+            with self.subTest(identifier=value), self.assertRaises(ValueError):
+                restore_details(self.config, value)
+        path = Path(restore_details(self.config, identifier)['path'])
+        path.unlink()
+        path.symlink_to(self.snapshot)
+        with self.assertRaises(ValueError):
+            restore_details(self.config, identifier)
+
+    def test_restore_staging_directory_cannot_be_a_symlink(self):
+        external = Path(self.temp.name) / 'external'
+        external.mkdir()
+        identifier = 'a' * 32
+        (external / (identifier + '.sqlite3')).write_bytes(self.snapshot.read_bytes())
+        (Path(self.temp.name) / 'restore-uploads').symlink_to(external, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            restore_details(self.config, identifier)
+        with self.assertRaises(ValueError):
+            stage_restore(self.config, io.BytesIO(self.snapshot.read_bytes()))
+        self.assertEqual(len(list(external.iterdir())), 1)
+
+    def test_recovery_paths_escape_sqlite_uri_characters(self):
+        directory = Path(self.temp.name) / 'recovery?#% space'
+        directory.mkdir()
+        config = replace(self.config, database_path=str(directory / 'live.sqlite3'))
+        init_db(config.database_path)
+        snapshot = directory / 'snapshot?#%.sqlite3'
+        backup(config, snapshot)
+        self.assertEqual(validate(snapshot), 11)
+        identifier = stage_restore(config, io.BytesIO(snapshot.read_bytes()))
+        details = restore_details(config, identifier)
+        self.assertEqual(details['schema'], 11)
+        restore(config, details['path'], 'RESTORE STOPPED AUDITDESK')
+        self.assertEqual(validate(config.database_path), 11)
+
     def test_administrator_lockout_and_non_audit_databases_are_rejected(self):
         with self.assertRaises(ValueError):
             stage_restore(replace(self.config,bootstrap_admins=()),io.BytesIO(self.snapshot.read_bytes()))

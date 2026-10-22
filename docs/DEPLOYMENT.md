@@ -80,6 +80,8 @@ Backups contain private listing/contact data and application access grants. Rest
 
 Administrators can download a consistent database snapshot from **Manage → Recovery**. The same page accepts a backup up to 512 MiB, checks its integrity, schema, migration, and administrator access, then stages the original file privately and displays its hash, record counts, and the exact offline restore command. Uploading never replaces live records. Remove staged files after recovery.
 
+Staged uploads must remain in the real `restore-uploads` directory beside the database. Recovery rejects symlinked staging directories and upload files; HTTP selections use validated tokens and sanitized filenames confined to that directory. SQLite paths are URI-escaped, including spaces and `?`, `#`, or `%` characters.
+
 Online backup also uses SQLite's consistent backup API from the CLI:
 
 ```sh
