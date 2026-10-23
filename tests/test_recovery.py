@@ -41,7 +41,7 @@ class RecoveryTests(unittest.TestCase):
             self.assertEqual(db.execute('SELECT rate_percent FROM selection_settings').fetchone()[0],'20')
             self.assertEqual(db.execute("SELECT action FROM activity_events ORDER BY id DESC").fetchone()[0], 'backup.restore_staged')
         restore(self.config,details['path'],'RESTORE STOPPED AUDITDESK')
-        self.assertEqual(validate(self.config.database_path),11)
+        self.assertEqual(validate(self.config.database_path), 12)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT rate_percent FROM selection_settings').fetchone()[0],'7')
         self.assertEqual(len(list(Path(self.temp.name).glob('live.sqlite3.before-restore-*'))),1)
@@ -57,7 +57,7 @@ class RecoveryTests(unittest.TestCase):
         with patch('audit_app.backup.MAX_BACKUP_BYTES',4), self.assertRaises(ValueError):
             stage_restore(self.config,io.BytesIO(b'12345'))
         self.assertEqual(list((Path(self.temp.name)/'restore-uploads').iterdir()),[])
-        self.assertEqual(validate(self.config.database_path),11)
+        self.assertEqual(validate(self.config.database_path), 12)
 
     def test_restore_identifiers_cannot_select_paths_outside_staging(self):
         identifier = stage_restore(self.config, io.BytesIO(self.snapshot.read_bytes()))
@@ -90,12 +90,12 @@ class RecoveryTests(unittest.TestCase):
         init_db(config.database_path)
         snapshot = directory / 'snapshot?#%.sqlite3'
         backup(config, snapshot)
-        self.assertEqual(validate(snapshot), 11)
+        self.assertEqual(validate(snapshot), 12)
         identifier = stage_restore(config, io.BytesIO(snapshot.read_bytes()))
         details = restore_details(config, identifier)
-        self.assertEqual(details['schema'], 11)
+        self.assertEqual(details['schema'], 12)
         restore(config, details['path'], 'RESTORE STOPPED AUDITDESK')
-        self.assertEqual(validate(config.database_path), 11)
+        self.assertEqual(validate(config.database_path), 12)
 
     def test_administrator_lockout_and_non_audit_databases_are_rejected(self):
         with self.assertRaises(ValueError):

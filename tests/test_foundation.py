@@ -604,12 +604,12 @@ class FoundationTests(unittest.TestCase):
         download=self.post('/manage/backup',{},page='/?tab=recovery')
         self.assertEqual(download.status_code,200,download.data[:100])
         self.assertEqual(download.mimetype,'application/octet-stream')
-        self.assertIn('schema-11.sqlite3',download.headers['Content-Disposition'])
+        self.assertIn('schema-12.sqlite3',download.headers['Content-Disposition'])
         self.assertEqual(download.headers['Cache-Control'],'no-store')
         snapshot=Path(self.temp.name)/'download.sqlite3'
         snapshot.write_bytes(download.data)
         download.close()
-        self.assertEqual(validate(snapshot),11)
+        self.assertEqual(validate(snapshot), 12)
         def upload(value, role='admin', token=None):
             self.get('/?tab=recovery',role=role)
             with self.client.session_transaction(base_url=self.config.public_url) as session:
@@ -641,7 +641,7 @@ class FoundationTests(unittest.TestCase):
     def test_backup_restore_integrity_and_refuse_live_restore(self):
         file=Path(self.temp.name)/'backup.sqlite3'
         backup(self.config,file)
-        self.assertEqual(validate(file),11)
+        self.assertEqual(validate(file), 12)
         with self.assertRaises(FileExistsError):backup(self.config,file)
         with self.assertRaises(ValueError):restore(self.config,file,'wrong')
         from audit_app.runtime import start_runtime
@@ -666,7 +666,7 @@ class FoundationTests(unittest.TestCase):
             db.commit()
         init_db(old);init_db(old)
         with connect(old) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],11)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 12)
             self.assertIsNone(db.execute("SELECT name FROM sqlite_master WHERE name='audit_reviewers'").fetchone())
             db.execute('PRAGMA user_version=99')
         with self.assertRaises(ValueError):init_db(old)
@@ -716,19 +716,20 @@ class FoundationTests(unittest.TestCase):
 
     def test_request_days_policy_permissions_validation_and_stale_forms(self):
         from audit_app.request_schedule import RequestPolicy, read_policy
-        form={'response_days':'2','deadline_mode':'business_days','send_4':'1','holidays':'2026-12-25'}
+        form={'send_time':'10:15','response_days':'2','deadline_mode':'business_days','send_4':'1','holidays':'2026-12-25'}
         for day in range(7):
             form.update({f'open_{day}':'08:30' if day<5 else '',f'close_{day}':'16:30' if day<5 else ''})
         self.assertEqual(self.post('/manage/calendar',form,role='reviewer').status_code,403)
         self.assertEqual(self.post('/manage/calendar',form,role='manager',Origin='https://evil.invalid').status_code,403)
         self.assertEqual(self.post('/manage/calendar',{**form,'token':'bad'},role='manager').status_code,403)
         self.assertEqual(self.post('/manage/calendar',form,role='manager').status_code,303)
-        self.assertEqual(read_policy(self.config),RequestPolicy((4,),2,'business_days'))
+        self.assertEqual(read_policy(self.config),RequestPolicy((4,),2,'business_days','10:15'))
         invalid=self.post('/manage/calendar',{**form,'response_days':'31'},role='manager',page='/?tab=calendar')
         self.assertEqual(invalid.status_code,400)
         self.assertIn('value="31"',invalid.text)
+        self.assertIn('name="send_time" type="time" value="10:15"',invalid.text)
         self.assertIn('name="send_4" value="1" checked',invalid.text)
-        self.assertEqual(read_policy(self.config),RequestPolicy((4,),2,'business_days'))
+        self.assertEqual(read_policy(self.config),RequestPolicy((4,),2,'business_days','10:15'))
         self.assertEqual(self.post('/manage/calendar',{**form,'revision':'0'},role='manager').status_code,409)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='settings.office_calendar_updated'").fetchone()[0],'manager')

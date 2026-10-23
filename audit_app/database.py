@@ -2,7 +2,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA = """
 PRAGMA journal_mode=DELETE;
@@ -183,6 +183,9 @@ def init_db(path, *, check_revision=True):
         for statement in SCHEMA.split(";"):
             if statement.strip() and not statement.strip().startswith("PRAGMA"):
                 db.execute(statement)
+        schedule_columns = {row["name"] for row in db.execute("PRAGMA table_info(request_schedule)")}
+        if "send_time" not in schedule_columns:
+            db.execute("ALTER TABLE request_schedule ADD COLUMN send_time TEXT NOT NULL DEFAULT ''")
         columns = {row["name"] for row in db.execute("PRAGMA table_info(listings)")}
         if "broker_first_name" not in columns:
             db.execute("ALTER TABLE listings ADD COLUMN broker_first_name TEXT")
