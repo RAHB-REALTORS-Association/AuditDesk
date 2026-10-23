@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — configurable request email time
+
+- Add an optional local request email time under Hours & holidays. Queued requests and retries wait until that time while respecting send weekdays, office hours, holidays and deadline policy. Blank preserves existing behavior.
+- Schema 12 preserves existing schedules and sent deadlines; daily intake and failed-audit notices retain their existing schedules.
+
 ## Unreleased — GitHub Actions dependency consolidation
 
 - Consolidate five Dependabot updates across verification and release workflows: Checkout v7, Setup Python v6, Buildx v4, Docker Login v4, and Build Push v7.

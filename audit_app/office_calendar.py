@@ -68,7 +68,7 @@ def save_calendar(config, form):
             (json.dumps(hours), json.dumps(sorted(holidays)), stamp))
         write_policy(db, policy, stamp)
         event(db, 'settings.office_calendar_updated', 'office-calendar', json.dumps({'hours': hours, 'holidays': sorted(holidays),
-            'send_days': policy.send_days, 'response_days': policy.response_days, 'deadline_mode': policy.deadline_mode}))
+            'send_time': policy.send_time, 'send_days': policy.send_days, 'response_days': policy.response_days, 'deadline_mode': policy.deadline_mode}))
         db.commit()
 
 
@@ -120,6 +120,9 @@ def response_deadline(moment, zone, calendar, policy=RequestPolicy()):
 def can_send_request(moment, zone, calendar, policy=RequestPolicy()):
     if moment.astimezone(ZoneInfo(zone)).weekday() not in policy.send_days or not office_open(moment, zone, calendar):
         return False
+    local = moment.astimezone(ZoneInfo(zone))
+    if policy.send_time and moment < local_instant(local.date(), time.fromisoformat(policy.send_time), zone):
+        return False
     due = response_deadline(moment, zone, calendar, policy)
     return due is not None and office_open(due, zone, calendar)
 
@@ -139,6 +142,8 @@ def next_request_time(moment, zone, calendar, policy=RequestPolicy()):
         def boundary(on, value):
             return local_instant(on, time.fromisoformat(value), zone)
         start = max(moment, boundary(day, interval[0]))
+        if policy.send_time:
+            start = max(start, boundary(day, policy.send_time))
         if policy.deadline_mode != 'elapsed':
             if start < boundary(day, interval[1]) and can_send_request(start, zone, calendar, policy):
                 return start

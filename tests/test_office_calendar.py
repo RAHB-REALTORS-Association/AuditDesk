@@ -35,6 +35,55 @@ class CalendarTests(unittest.TestCase):
             form[f'open_{day}'], form[f'close_{day}'] = interval or ('', '')
         return {**form, **overrides}
 
+    def test_request_time_blocks_early_delivery_and_updates_next_window(self):
+        before = instant('2026-10-05T09:00:00-04:00')
+        at = instant('2026-10-05T10:15:00-04:00')
+        policy = RequestPolicy(send_time='10:15')
+        self.assertFalse(can_send_request(before, self.zone, self.calendar, policy))
+        self.assertEqual(next_request_time(before, self.zone, self.calendar, policy), at)
+        self.assertTrue(can_send_request(at, self.zone, self.calendar, policy))
+        sender = Mock(return_value='accepted')
+        save_calendar(self.config, self.schedule_form(send_time='10:15'))
+        run_job(self.config, FakeClient([listing('1')]), now=before, sender=sender)
+        sender.assert_not_called()
+        run_job(self.config, FakeClient([]), now=at, sender=sender, only_if_needed=True)
+        self.assertEqual(sender.call_count, 1)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT response_due_at FROM audits').fetchone()[0],
+                             (at + timedelta(days=1)).isoformat(timespec='seconds'))
+        self.assertEqual(read_policy(self.config).send_time, '10:15')
+
+    def test_request_time_respects_closures_opening_deadlines_and_dst(self):
+        before = instant('2026-10-05T07:00:00-04:00')
+        self.assertEqual(next_request_time(before, self.zone, self.calendar, RequestPolicy(send_time='07:30')),
+                         instant('2026-10-05T08:30:00-04:00'))
+        self.assertIsNone(next_request_time(before, self.zone, self.calendar, RequestPolicy(send_time='16:30')))
+        holiday_calendar = (DEFAULT_HOURS, {'2026-10-05'})
+        self.assertEqual(next_request_time(before, self.zone, holiday_calendar, RequestPolicy(send_time='10:15')),
+                         instant('2026-10-06T10:15:00-04:00'))
+        friday = instant('2026-10-02T09:00:00-04:00')
+        self.assertEqual(next_request_time(friday, self.zone, self.calendar, RequestPolicy(send_time='10:15')),
+                         instant('2026-10-05T10:15:00-04:00'))
+        all_hours = ([('00:00','23:59')] * 7, set())
+        gap = instant('2026-03-08T01:00:00-05:00')
+        self.assertEqual(next_request_time(gap, self.zone, all_hours, RequestPolicy(send_time='02:30', deadline_mode='next_open')),
+                         instant('2026-03-08T03:00:00-04:00'))
+
+    def test_send_time_validation_and_schema_11_upgrade(self):
+        save_calendar(self.config, self.schedule_form(send_time='10:15'))
+        for value in ('25:00', '9:00', '10:60', '10:15:00', ' 10:15', '<script>'):
+            with self.assertRaises(ValueError):
+                save_calendar(self.config, self.schedule_form(send_time=value))
+            self.assertEqual(read_policy(self.config).send_time, '10:15')
+        with connect(self.config.database_path) as db:
+            db.execute('ALTER TABLE request_schedule DROP COLUMN send_time')
+            db.execute('PRAGMA user_version=11')
+            db.commit()
+        init_db(self.config.database_path)
+        init_db(self.config.database_path)
+        self.assertEqual(read_policy(self.config), RequestPolicy())
+        self.assertEqual(read_calendar(self.config)[0][0], ['08:30', '16:30'])
+
     def test_defaults_preserve_legacy_calendar_and_deadline_behavior(self):
         self.assertEqual(read_policy(self.config), RequestPolicy())
         with connect(self.config.database_path) as db:

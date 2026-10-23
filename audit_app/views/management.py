@@ -14,6 +14,7 @@ def calendar_view(config, values=None, error=''):
     hours, holidays = read_calendar(config)
     policy = read_policy(config)
     send_days = ''.join(f'<label><input type="checkbox" name="send_{day}" value="1" {"checked" if (values.get(f"send_{day}") == "1" if values is not None else day in policy.send_days) else ""}>{label}</label>' for day, label in enumerate(DAY_NAMES))
+    send_time = values.get('send_time', '') if values is not None else policy.send_time
     mode = values.get('deadline_mode', '') if values is not None else policy.deadline_mode
     response_days = values.get('response_days', '') if values is not None else str(policy.response_days)
     modes = ''.join(f'<option value="{key}" {"selected" if key == mode else ""}>{esc(label)}</option>' for key, label in DEADLINE_MODES.items())
@@ -28,6 +29,8 @@ def calendar_view(config, values=None, error=''):
         <div class="admin-content">{'<p class="form-error" role="alert">'+esc(error)+'</p>' if error else ''}
         <p>Listings are considered every day. Choose when requests may send and how their response deadlines use the office calendar. Existing sent deadlines stay fixed.</p>
         <form method="post" action="/manage/calendar" class="office-calendar-form"><input type="hidden" name="token" value="{retry_token(config, 'calendar')}">
+        <label for="request-send-time">Request email time ({esc(config.timezone)})<input id="request-send-time" name="send_time" type="time" value="{html.escape(send_time, quote=True)}"></label>
+        <p class="form-help">Requests wait until this local time each eligible day. If the office opens later, they wait for opening. The scheduler checks every five minutes and catches up after downtime. Leave blank to send whenever the existing calendar allows. Listing collection keeps its daily 8 a.m. schedule; failed-audit notices are unchanged.</p>
         <fieldset class="request-send-days"><legend>Allowed request-send days</legend>{send_days}</fieldset>
         <p class="form-help">Requests also require office hours and cannot send on a holiday. Uncheck all days to pause request delivery without stopping listing collection.</p>
         <label for="response-days">Response period (days)<input id="response-days" name="response_days" type="number" min="1" max="30" step="1" required value="{html.escape(response_days, quote=True)}"></label>

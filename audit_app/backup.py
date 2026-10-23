@@ -39,6 +39,8 @@ def validate(path):
             }
             if version >= 11:
                 required['request_schedule'] = 'id,send_days,response_days,deadline_mode,updated_at'
+            if version >= 12:
+                required['request_schedule'] += ',send_time'
             for table, columns in required.items():
                 kind = db.execute('SELECT type FROM sqlite_master WHERE name=?', (table,)).fetchone()
                 if not kind or kind[0] != 'table':
