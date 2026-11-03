@@ -45,6 +45,23 @@ def record_outcome(config, audit_id, outcome, issues="", sender=None):
     return outcome
 
 
+def remediate_audit(config, audit_id):
+    """Pass a corrected failed audit, retaining its original issues and delivery history."""
+    with connect(config.database_path) as db:
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+        require_cornerstone_audit(db, audit_id)
+        audit = db.execute("SELECT outcome,outcome_at,failure_email_status FROM audits WHERE id=?", (audit_id,)).fetchone()
+        if not audit or audit["outcome"] != "failed":
+            raise ValueError("Only a failed audit can be marked remediated and passed.")
+        if audit["failure_email_status"] == "email_sending":
+            raise ValueError("The failed-audit notice is being sent. Wait for delivery to finish, then try again.")
+        db.execute("UPDATE audits SET outcome='passed',outcome_at=? WHERE id=? AND outcome='failed'", (utcnow(), audit_id))
+        event(db, "audit.remediated", audit_id, json.dumps({
+            "previous_outcome": "failed", "previous_outcome_at": audit["outcome_at"], "outcome": "passed"}))
+        db.commit()
+
+
 def deliver_failure_notice(config, audit_id, retry=False, sender=None):
     if config.env == "development" or not config.email_enabled or not config.test_window_open():
         LOG.info("failure_notice_blocked_by_test_window", extra={"audit_id": audit_id})

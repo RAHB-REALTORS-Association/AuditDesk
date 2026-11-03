@@ -36,7 +36,7 @@ Views format data and construct HTML. Routes authorize and validate HTTP input b
 | `refresh.py` | Explicit bulk refresh of unsent audit listing/contact snapshots and recipients; bounded batches, job lock and conflict checks; no selection or delivery |
 | `office_calendar.py`, `responses.py` | Managed weekly hours/holiday dates, send/deadline availability, independently recorded response receipt |
 | `emailer.py` | Recipient validation, test redirection, SendGrid request/notice transport |
-| `outcomes.py` | Single-assignment results and failure-notice delivery |
+| `outcomes.py` | Initial results, failed-to-passed remediation and failure-notice delivery |
 | `assignment.py`, `settings.py` | Individual/bulk account assignments and managed workflow settings |
 | `templates.py` | Merge tags, sanitized rich/plain email content, saved request/failure wording |
 | `report.py`, `brokerage_report.py`, `brokerage_pdf.py` | Daily aggregates, grouped brokerage/branch statistics, branded PDF generation |
@@ -71,6 +71,8 @@ Pending requests resume during an eligible office window. Send time must be on a
 The scheduler checks every five minutes after 08:00 in `APP_TIMEZONE`. Completed intake suppresses another scheduled run that day; failed intake can retry. The Active-only rule still excludes listings that became inactive during downtime.
 
 ## Identity and mutations
+
+Initial results remain single-assignment. A dedicated remediation action permits only `failed` → `passed` under a write transaction, preserving issues, assignment, Asana links and all delivery records. It updates the current outcome timestamp and appends `audit.remediated` with the authenticated actor and the original failure timestamp. Reporting uses the current outcome; the result page retains the original failure and notice history. Remediation makes no external calls, blocks while a failure notice is sending, and prevents subsequent failure-notice claims through the existing failed-outcome check. It uses the existing schema and mutation protections.
 
 Test/production require signed Access identity with the configured issuer/audience and an active application role. Unknown/disabled identities are denied. Bootstrap administrators are protected. Development has a fixed demo administrator.
 

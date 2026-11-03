@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — failed-audit remediation
+
+- Let reviewers mark a corrected failed audit as remediated and passed from its detail page. The action sends no email, preserves original issues and delivery/task history, and records the actor and original failure timestamp in activity history. Current reports count the audit as passed.
+- Protect remediation with existing role, CSRF, origin and stale-form checks. Reject repeated transitions and wait for an in-flight failure notice before permitting remediation. No schema change is required.
+
 ## Unreleased — compact audit comments
 
 - Limit failed-audit comments in Audit history to a two-line excerpt with a View details link. The full comment remains on the audit result page.

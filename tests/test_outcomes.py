@@ -11,7 +11,8 @@ from audit_app.config import load_config
 from audit_app.database import connect, init_db
 from audit_app.emailer import EmailError, send_failure_email
 from audit_app.job import run_job
-from audit_app.outcomes import deliver_failure_notice, record_outcome
+from audit_app.outcomes import deliver_failure_notice, record_outcome, remediate_audit
+from audit_app.brokerage_report import brokerage_statistics
 from audit_app.templates import current_failure_templates, save_failure_templates
 from audit_app.web import render
 
@@ -84,6 +85,60 @@ class OutcomeTests(unittest.TestCase):
         self.assertEqual(send.call_count, 1)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM failure_email_attempts").fetchone()[0], 2)
+
+    def test_remediation_preserves_failure_and_delivery_history_and_updates_reports(self):
+        record_outcome(self.config, 1, "failed", "Missing <signed> agreement", sender=lambda *args: "failure-id")
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE audits SET asana_task_url='https://app.asana.com/0/123/456'")
+            db.commit()
+            before = dict(db.execute("SELECT * FROM audits WHERE id=1").fetchone())
+            attempts = [tuple(row) for row in db.execute("SELECT * FROM failure_email_attempts")]
+        with patch("audit_app.outcomes.send_failure_email") as sender, patch("audit_app.outcomes.utcnow", return_value="2026-11-03T20:00:00+00:00"):
+            remediate_audit(self.config, 1)
+        sender.assert_not_called()
+        with connect(self.config.database_path) as db:
+            after = dict(db.execute("SELECT * FROM audits WHERE id=1").fetchone())
+            self.assertEqual(after, {**before, "outcome": "passed", "outcome_at": "2026-11-03T20:00:00+00:00"})
+            self.assertEqual([tuple(row) for row in db.execute("SELECT * FROM failure_email_attempts")], attempts)
+            history = db.execute("SELECT detail FROM activity_events WHERE action='audit.remediated'").fetchone()
+            self.assertEqual(json.loads(history["detail"]), {"previous_outcome": "failed", "previous_outcome_at": before["outcome_at"], "outcome": "passed"})
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='audit.result'").fetchone()[0], 1)
+        report = brokerage_statistics(self.config, today=NOW.date())
+        self.assertEqual((report['passed'], report['failed']), (1, 0))
+        page = render(self.config, "outcome", audit_id=1)
+        self.assertIn("Remediated and passed", page)
+        self.assertIn("Original failure issues", page)
+        self.assertIn("Missing &lt;signed&gt; agreement", page)
+        self.assertIn("Open Asana task", page)
+        self.assertNotIn("Create Asana task", page)
+        self.assertNotIn('action="/outcome/1/remediate"', page)
+        self.assertFalse(deliver_failure_notice(self.config, 1, retry=True))
+
+    def test_remediation_rejects_unfinished_passed_and_duplicate_transitions(self):
+        with self.assertRaisesRegex(ValueError, "Only a failed audit"):
+            remediate_audit(self.config, 1)
+        record_outcome(self.config, 1, "failed", "Missing form", sender=lambda *args: "failure-id")
+        remediate_audit(self.config, 1)
+        with self.assertRaisesRegex(ValueError, "Only a failed audit"):
+            remediate_audit(self.config, 1)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM activity_events WHERE action='audit.remediated'").fetchone()[0], 1)
+
+    def test_remediation_blocks_inflight_notice_and_suppresses_pending_notice(self):
+        record_outcome(replace(self.config, email_enabled=False), 1, "failed", "Missing form")
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE audits SET failure_email_status='email_sending'")
+            db.commit()
+        with self.assertRaisesRegex(ValueError, "being sent"):
+            remediate_audit(self.config, 1)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT outcome FROM audits").fetchone()[0], "failed")
+            db.execute("UPDATE audits SET failure_email_status='email_pending'")
+            db.commit()
+        remediate_audit(self.config, 1)
+        with patch("audit_app.outcomes.send_failure_email") as sender:
+            self.assertFalse(deliver_failure_notice(self.config, 1))
+        sender.assert_not_called()
 
     def test_failure_email_contains_issues_and_only_admin_in_test_mode(self):
         class Response:

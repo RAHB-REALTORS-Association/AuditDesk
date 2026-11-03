@@ -1,5 +1,6 @@
 """Audit result forms and failed-notice previews."""
 import html
+import json
 
 from ..asana import follow_up
 from ..board_scope import require_cornerstone_audit
@@ -35,6 +36,7 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
         row = db.execute("""SELECT a.*,l.mls_number,l.address,l.agent_name AS listing_agent_name,
             l.agent_email,l.brokerage_email,l.broker_email,l.broker_first_name FROM audits a
             JOIN listings l ON l.id=a.listing_id WHERE a.id=?""", (audit_id,)).fetchone()
+        remediation = db.execute("SELECT detail FROM activity_events WHERE action='audit.remediated' AND target=? ORDER BY id DESC LIMIT 1", (str(audit_id),)).fetchone()
     if not row:
         return '<section class="panel outcome-panel">Audit not found.</section>'
     data = dict(row)
@@ -42,12 +44,28 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
     heading = f'<div class="panel-head"><div><h2>MLS {esc(data["mls_number"])} · {esc(data["address"])}</h2><p>{esc(data["brokerage_name"])} · {esc(data["broker_name"])}</p></div></div>'
     if data["outcome"]:
         details = ('<p class="form-error" role="alert">' + esc(error) + '</p>' if error else '')
-        details += f'<p>Result: {badge(data["outcome"])}</p><p>Recorded {esc(local_time(data["outcome_at"], config.timezone))}</p>'
+        details += f'<p>Result: {badge(data["outcome"])}</p>'
+        remediated = data["outcome"] == "passed" and remediation is not None
+        if remediated:
+            previous_at = json.loads(remediation["detail"])["previous_outcome_at"]
+            details += f'<p>Remediated and passed {esc(local_time(data["outcome_at"], config.timezone))}</p><p>Originally failed {esc(local_time(previous_at, config.timezone))}</p>'
+        else:
+            details += f'<p>Recorded {esc(local_time(data["outcome_at"], config.timezone))}</p>'
         if data["outcome"] == "failed":
+            if data["failure_email_status"] == "email_sending":
+                details += '<p>The failed-audit notice is being sent. Remediation is available after delivery finishes.</p>'
+            else:
+                details += f'''<form method="post" action="/outcome/{audit_id}/remediate" class="pass-form">
+                    <input type="hidden" name="token" value="{retry_token(config, 'remediate')}">
+                    <p>Once the listing has been corrected, mark this audit passed. The original failure and notice history stay available. No email will be sent.</p>
+                    <button type="submit" class="primary-button">Mark remediated and passed</button></form>'''
             details += asana_handoff(config, data)
-            details += f'<h3>Issues recorded</h3><pre class="outcome-issues">{html.escape(data["issues"] or "")}</pre><p>Follow-up notice: {badge(data["failure_email_status"] or "email_pending")}</p>'
+        if data["outcome"] == "failed" or remediated:
+            details += f'<h3>{"Original failure issues" if remediated else "Issues recorded"}</h3><pre class="outcome-issues">{html.escape(data["issues"] or "")}</pre><p>{"Original follow-up notice" if remediated else "Follow-up notice"}: {badge(data["failure_email_status"] or "email_pending")}</p>'
             if data["failure_last_error"]:
                 details += f'<p class="error">{esc(data["failure_last_error"])}</p>'
+            if remediated and data['asana_task_url']:
+                details += f'<p><a href="{esc(data["asana_task_url"])}" target="_blank" rel="noopener noreferrer">Open Asana task</a></p>'
         return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}<a href="/?tab=audits">Back to audit history</a></div></section>'
     if data["email_status"] != "email_sent":
         return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">Send the original audit request before recording its result.</div></section>'

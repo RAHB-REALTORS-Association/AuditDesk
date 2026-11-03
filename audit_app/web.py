@@ -173,6 +173,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 if len(summary) > 120:
                     summary = summary[:117].rstrip() + "…"
                 outcome += f'<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small class="outcome-summary">{esc(summary)}</small><a class="outcome-details" href="/?tab=outcome&id={r["id"]}">View details</a>'
+            elif r["outcome"] == "passed" and r["issues"]:
+                outcome += f'<small>Remediated</small><a class="outcome-details" href="/?tab=outcome&id={r["id"]}">View details</a>'
             if r["outcome"] == "failed" and allowed("audits.result"):
                 task_url = r['asana_task_url'] or follow_up(config, r)[2]
                 task_label = 'Open Asana task' if r['asana_task_url'] else 'Create Asana task'

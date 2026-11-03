@@ -380,6 +380,34 @@ class FoundationTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute('SELECT email_status FROM audits').fetchone()[0],'email_blocked')
 
+    def test_remediation_route_enforces_permissions_csrf_revision_and_records_actor(self):
+        from audit_app.security import CAPABILITIES, event
+        self.seed_asana_audits()
+        endpoint = '/outcome/1/remediate'
+        page = '/?tab=outcome&id=1'
+        self.assertIn('Mark remediated and passed', self.get(page, role='reviewer').text)
+        self.assertEqual(self.post(endpoint, {'token':''}, role='reviewer', page=page).status_code, 403)
+        self.assertEqual(self.post(endpoint, {}, role='reviewer', page=page, Origin='https://other.invalid').status_code, 403)
+        with patch.dict(CAPABILITIES, {'reviewer': frozenset({'audits.read'})}):
+            self.assertEqual(self.post(endpoint, {}, role='reviewer').status_code, 403)
+        with connect(self.config.database_path) as db:
+            revision = db.execute('SELECT COALESCE(max(id),0) FROM activity_events').fetchone()[0]
+            event(db, 'test.concurrent_change', 1)
+            db.commit()
+        self.assertEqual(self.post(endpoint, {'revision':str(revision)}, role='reviewer', page=page).status_code, 409)
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT outcome FROM audits WHERE id=1').fetchone()[0], 'failed')
+        with patch('audit_app.outcomes.send_failure_email') as sender:
+            response = self.post(endpoint, {}, role='reviewer', page=page)
+        self.assertEqual(response.status_code, 303, response.text)
+        sender.assert_not_called()
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='audit.remediated'").fetchone()[0], 'reviewer')
+        result = self.get(page, role='reviewer').text
+        self.assertIn('Remediated and passed', result)
+        self.assertIn('Missing document &lt;check&gt; &amp; details', result)
+        self.assertEqual(self.post(endpoint, {}, role='reviewer', page=page).status_code, 400)
+
     def test_email_disable_blocks_sender_and_failed_run_can_retry(self):
         sender=Mock()
         run_job(replace(self.config,email_enabled=False),FakeClient([listing('1')]),now=NOW,sender=sender)
