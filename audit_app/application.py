@@ -30,7 +30,7 @@ from .eligibility import rules_from_form, save_rules
 from .office_calendar import save_calendar
 from .responses import record_response
 from .asana import save_task_link
-from .outcomes import deliver_failure_notice, record_outcome
+from .outcomes import deliver_failure_notice, record_outcome, remediate_audit
 from .security import AccessVerifier, allowed, authenticate, check_csrf, event, require, save_user, delete_user, seed_admins
 from .settings import save_brokerage_cooldown_days, save_selection_percent, save_workflow_settings, save_selection_settings
 from .templates import save_templates, save_failure_templates, validate_templates
@@ -340,6 +340,15 @@ def create_app(config=None, verifier=None):
         except ValueError as error:
             return web.render(config, 'outcome', error=str(error), audit_id=audit_id), 400
         return done('outcome', 'Asana task link saved.', id=audit_id)
+
+    @app.post("/outcome/<int:audit_id>/remediate")
+    @require("audits.result")
+    def remediate(audit_id):
+        try:
+            remediate_audit(config, audit_id)
+        except ValueError as error:
+            return web.render(config, "outcome", error=str(error), audit_id=audit_id), 400
+        return done("outcome", "Audit marked remediated and passed. No email was sent.", id=audit_id)
 
     @app.post("/outcome/<int:audit_id>")
     @require("audits.result")
