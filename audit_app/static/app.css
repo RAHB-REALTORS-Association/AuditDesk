@@ -320,7 +320,7 @@ td .muted {
   color: #526176;
 }
 
-.mode-test,.mode-prod {
+.mode-test {
   font-size: 9px;
   font-weight: 900;
   letter-spacing: .06em;
@@ -332,11 +332,6 @@ td .muted {
 .mode-test {
   background: #fff0cf;
   color: #a05c00;
-}
-
-.mode-prod {
-  background: #fce0dd;
-  color: #a72e20;
 }
 
 .error {
@@ -1395,7 +1390,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
 }
 
 .history-table {
-  min-width: 1900px;
+  min-width: 1720px;
 }
 
 .history-table td {
@@ -1406,7 +1401,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible {
   min-width: 180px;
 }
 
-.history-table .history-intended {
+.history-table .history-recipient {
   min-width: 220px;
 }
 

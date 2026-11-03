@@ -3,6 +3,7 @@
 ## Unreleased — production interface
 
 - Remove the production email banner from normal pages. Delivery status remains available under Manage → Selection → Service configuration.
+- Show one Recipient column with To and CC, simplify failed-notice preview labels, and remove the routine LIVE badge from the Status column.
 
 ## Unreleased — configurable request email time
 
