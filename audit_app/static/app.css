@@ -633,6 +633,20 @@ footer {
   border-radius: 8px;
 }
 
+.history-table .outcome-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  max-width: 260px;
+}
+
+.outcome-details {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
 .table-wrap td small {
   overflow-wrap: anywhere;
 }

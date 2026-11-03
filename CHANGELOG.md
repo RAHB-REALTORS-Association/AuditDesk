@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased — compact audit comments
+
+- Limit failed-audit comments in Audit history to a two-line excerpt with a View details link. The full comment remains on the audit result page.
+
 ## Unreleased — production interface
 
 - Remove the production email banner from normal pages. Delivery status remains available under Manage → Selection → Service configuration.
