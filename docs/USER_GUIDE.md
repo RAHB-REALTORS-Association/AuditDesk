@@ -54,13 +54,13 @@ Use **Filters & columns → Broker response** to find overdue requests, requests
 
 Reviewers can select **Response received** on a row to record receipt now. To enter an earlier actual receipt time, open **Record result** and use the optional office-time field in the Broker response section. Receipt stops the response clock while audit review remains open. It shows whether receipt was within 24 hours or after the deadline. **Reopen response timer** clears an incorrect receipt without changing the original deadline. Activity history records these changes. Recording a result also removes an audit from the open-response queue; it does not invent a receipt timestamp.
 
-1. Review Audit history. Selected listings, intended/actual recipients, delivery state, reviewer, and outcome are shown together.
+1. Review Audit history. Selected listings, recipients (To and CC), delivery state, reviewer, and outcome are shown together.
 2. Choose **Assign to me** in the **Assigned to** column to claim an unassigned unfinished audit, or have a manager assign a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
 3. Once the original request is accepted by SendGrid, choose Record result. A pass records the result without another email. For a failure, describe the issues, preview the notice, then record and send. Each audit receives one result.
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
 5. Use daily and brokerage reports for the app's intake history. Missing intake is not a zero day, and rates exclude pending results where appropriate. PDF export reflects the selected period.
 
-Test mode redirects all messages to the configured administrator, and the banner shows that mode. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
+Test mode redirects all messages to the configured administrator, and the banner shows that mode. Normal production pages do not display an email banner; check **Manage → Selection → Service configuration** for delivery and environment status. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
 
 ## Choose visible columns
 

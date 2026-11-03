@@ -61,9 +61,10 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
             subject_template, body_template, _, body_format = current_failure_templates(config)
             subject, _, rich_body = format_message_parts(subject_template, body_template, data,
                 config.test_mode, intended_to, intended_cc, body_format, issues=issues.strip())
+            test_delivery = f'<p><strong>Test delivery:</strong> {esc(", ".join(actual))}</p>' if config.test_mode else ""
             preview_html = f'''<div class="outcome-preview"><h3>Review failed-audit notice</h3>
-                <p><strong>Actual recipient:</strong> {esc(", ".join(actual))}</p>
-                <p><strong>Intended To:</strong> {esc(", ".join(intended_to))}<br><strong>Intended CC:</strong> {esc(", ".join(intended_cc))}</p>
+                {test_delivery}
+                <p><strong>To:</strong> {esc(", ".join(intended_to))}<br><strong>CC:</strong> {esc(", ".join(intended_cc))}</p>
                 <div class="preview-subject">{html.escape(subject)}</div><div class="preview-body">{rich_body}</div>
                 <button class="primary-button" type="submit" name="action" value="send">Record fail and send notice</button></div>'''
         except (EmailError, ValueError) as exc:

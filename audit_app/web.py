@@ -70,8 +70,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             audits, list_page = query_page(db, tab, source,
                 ('mls_number','address','brokerage_name','broker_name','agent_name','agent_email','reviewer_name'),
                 'email_status', {'MLS / Property':'mls_number','Selected':'selected_at','Brokerage / Broker':'brokerage_name',
-                'Agent':'agent_name','Intended recipients':'intended_to','Actual recipient':'actual_recipients',
-                'Mode / Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count','Broker response':'deadline_sort'}, 'selected_at')
+                'Agent':'agent_name','Recipient':'intended_to',
+                'Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count','Broker response':'deadline_sort'}, 'selected_at')
         elif tab == "listings":
             listings, list_page = query_page(db, tab, "SELECT * FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)",
                 ('mls_number','address','brokerage_name','agent_name'), 'processing_status',
@@ -101,7 +101,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 detail = "The live-data test has ended. Scheduled queries and all email sends are blocked."
         banner = f'<div class="test-banner"><strong>TEST MODE</strong><span>{esc(detail)}</span></div>'
     else:
-        banner = '<div class="prod-banner">PRODUCTION EMAIL ENABLED</div>'
+        banner = ''
     if not config.email_enabled:
         banner = '<div class="test-banner"><strong>EMAIL DISABLED</strong><span>No messages will be sent. Audits and results remain available for review.</span></div>'
     if config.env == "development":
@@ -158,8 +158,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         title, subtitle = "Scheduled runs", "Recent daily jobs and any errors they encountered."
     else:
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Broker response", "date"), sort_heading("Selected", "date", True),
-                            sort_heading("Brokerage / Broker"), sort_heading("Agent"), sort_heading("Intended recipients"),
-                            sort_heading("Actual recipient"), sort_heading("Mode / Status"), sort_heading("Work status"),
+                            sort_heading("Brokerage / Broker"), sort_heading("Agent"), sort_heading("Recipient"),
+                            sort_heading("Status"), sort_heading("Work status"),
                             sort_heading("Assigned to"), sort_heading("History", "number"), sort_heading("Outcome"), "<th>Actions</th>"))
         selectable = allowed("audits.assign") or allowed("audits.refresh")
         if selectable:
@@ -181,7 +181,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 retry += f'<form method="post" action="/failure-retry/{r["id"]}"><input type="hidden" name="token" value="{failure_token}">{action_button('notice', 'Send failed notice')}</form>'
             retry += response_form(config, r)
             response = deadline_view(config, r, now=now, next_send=next_send)
-            mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else '<span class="mode-prod">LIVE</span>'
+            mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else ''
+            test_delivery = f'<small>Test delivery: {esc(recipients(r["actual_recipients"]))}</small>' if r["test_mode"] else ""
             eligible = can_audit(r)
             work_status = ("Completed" if r["outcome"] else "In progress" if eligible
                            else "Needs reassignment" if r["assignee_user_id"] else "Not started")
@@ -198,11 +199,11 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 assignment += f'<form method="post" action="/assignment/{r["id"]}/self" class="assignment-form"><input type="hidden" name="token" value="{assignment_token}"><button type="submit" aria-label="Assign MLS {esc(r["mls_number"])} to me">Assign to me</button></form>'
             reviewer_label = r["reviewer_name"] or ""
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
-            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td class="history-response">{response}</td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-intended"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small></td><td class="history-recipient">{esc(recipients(r["actual_recipients"]))}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td class="history-actions"><div class="row-actions">{retry}</div></td></tr>'
+            rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td class="history-response">{response}</td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-recipient"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small>{test_delivery}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td class="history-actions"><div class="row-actions">{retry}</div></td></tr>'
         title, subtitle = "Audit history", "Cornerstone member listings only · Selection, recipient routing, and email delivery."
     if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery", "calendar", "eligibility"}:
         if not rows:
-            rows = f'<tr><td colspan="{(14 if allowed("audits.assign") or allowed("audits.refresh") else 13) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
+            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") or allowed("audits.refresh") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
         bulk = ""
         if tab == "audits" and (allowed("audits.assign") or allowed("audits.refresh")) and audits:
             bulk_options = '<option value="" disabled selected>Choose an assignment</option><option value="unassigned">Unassigned — clear assignment</option>' + "".join(
