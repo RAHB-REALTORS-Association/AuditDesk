@@ -167,7 +167,12 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         rows = ""
         for r in audits:
             retry = f'<form method="post" action="/retry/{r["id"]}"><input type="hidden" name="token" value="{retry_token(config, r["id"])}">{action_button('retry', 'Retry email')}</form>' if r["email_status"] == "email_failed" and allowed("email.retry") else ""
-            outcome = action_link('result', 'Record result', f'/?tab=outcome&id={r["id"]}') if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else (f'{badge(r["outcome"])}<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small>{esc(r["issues"])}</small>' if r["outcome"] == "failed" else badge(r["outcome"]) if r["outcome"] else "—")
+            outcome = action_link('result', 'Record result', f'/?tab=outcome&id={r["id"]}') if not r["outcome"] and r["email_status"] == "email_sent" and allowed("audits.result") else badge(r["outcome"]) if r["outcome"] else "—"
+            if r["outcome"] == "failed":
+                summary = " ".join((r["issues"] or "").split())
+                if len(summary) > 120:
+                    summary = summary[:117].rstrip() + "…"
+                outcome += f'<small>Notice: {esc((r["failure_email_status"] or "pending").replace("_", " "))}</small><small class="outcome-summary">{esc(summary)}</small><a class="outcome-details" href="/?tab=outcome&id={r["id"]}">View details</a>'
             if r["outcome"] == "failed" and allowed("audits.result"):
                 task_url = r['asana_task_url'] or follow_up(config, r)[2]
                 task_label = 'Open Asana task' if r['asana_task_url'] else 'Create Asana task'
