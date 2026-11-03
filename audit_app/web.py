@@ -101,7 +101,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 detail = "The live-data test has ended. Scheduled queries and all email sends are blocked."
         banner = f'<div class="test-banner"><strong>TEST MODE</strong><span>{esc(detail)}</span></div>'
     else:
-        banner = '<div class="prod-banner">PRODUCTION EMAIL ENABLED</div>'
+        banner = ''
     if not config.email_enabled:
         banner = '<div class="test-banner"><strong>EMAIL DISABLED</strong><span>No messages will be sent. Audits and results remain available for review.</span></div>'
     if config.env == "development":

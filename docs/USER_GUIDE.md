@@ -60,7 +60,7 @@ Reviewers can select **Response received** on a row to record receipt now. To en
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
 5. Use daily and brokerage reports for the app's intake history. Missing intake is not a zero day, and rates exclude pending results where appropriate. PDF export reflects the selected period.
 
-Test mode redirects all messages to the configured administrator, and the banner shows that mode. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
+Test mode redirects all messages to the configured administrator, and the banner shows that mode. Normal production pages do not display an email banner; check **Manage → Selection → Service configuration** for delivery and environment status. EMAIL_ENABLED=false blocks all sends even in test mode. A recorded result may therefore have a pending notice until email is enabled and a permitted person resumes it.
 
 ## Choose visible columns
 
