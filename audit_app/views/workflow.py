@@ -66,7 +66,8 @@ def outcome_view(config, audit_id, issues="", error="", preview=False):
                 details += f'<p class="error">{esc(data["failure_last_error"])}</p>'
             if remediated and data['asana_task_url']:
                 details += f'<p><a href="{esc(data["asana_task_url"])}" target="_blank" rel="noopener noreferrer">Open Asana task</a></p>'
-        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}<a href="/?tab=audits">Back to audit history</a></div></section>'
+        back_link = '<a href="/?tab=listings">Back to listing history</a>' if data["outcome"] == "passed" else '<a href="/?tab=audits">Back to audit queue</a>'
+        return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">{details}{back_link}</div></section>'
     if data["email_status"] != "email_sent":
         return f'<section class="panel outcome-panel">{heading}<div class="outcome-content">Send the original audit request before recording its result.</div></section>'
     token = retry_token(config, f"outcome:{audit_id}")

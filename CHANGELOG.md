@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — audit queue and listing history
+
+- Rename Audit history to Audit queue and exclude passed audits, including remediated passes, before search, filtering and pagination. Failed audits remain open with Follow-up required work status; their initial broker response is labelled Reviewed.
+- Rename Listings considered to Listing history. Retain all considered listings with an audit outcome filter, sortable outcome column and View audit links, including full passed/remediated history. Reports and stored records remain unchanged.
+
 ## Unreleased — failed-audit remediation
 
 - Let reviewers mark a corrected failed audit as remediated and passed from its detail page. The action sends no email, preserves original issues and delivery/task history, and records the actor and original failure timestamp in activity history. Current reports count the audit as passed.

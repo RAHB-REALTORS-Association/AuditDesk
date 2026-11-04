@@ -22,6 +22,8 @@ AuditDesk is a modular monolith: one Python process serves staff pages, runs the
 
 List filters and row counts are represented in URLs; column preferences are stored by table in browser storage. `lists.py` bounds SQL history queries to a validated page size, applies parameterized search/status filters, and maps sort labels to fixed fields. Reports page aggregate rows, keeping brokerage branches with their parent. Hiding columns and paging do not affect full exports. Bulk selections persist across pages in tab-scoped storage, keyed by authenticated identity, with a 200-audit limit.
 
+The `audits` URL serves Audit queue: its source excludes passed outcomes before filtering, counting and pagination. Failed audits remain visible with Follow-up required work status. The `listings` URL serves Listing history, joining each considered listing to its audit when present, with a separate validated audit-outcome filter and links to the result page. Passing or remediating an audit changes no stored history or report scope; it only removes the result from the queue. No schema migration is needed.
+
 Views format data and construct HTML. Routes authorize and validate HTTP input before calling workflow services. Visibility checks in navigation do not substitute for server-side permissions. `templates.py` handles email content and sanitization; it is separate from browser presentation in `views/`.
 
 ## Workflow and infrastructure

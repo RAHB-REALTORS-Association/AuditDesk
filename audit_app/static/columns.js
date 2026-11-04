@@ -60,7 +60,7 @@ document.querySelectorAll('table[data-columns]').forEach((table) => {
   const filters = table.closest('.panel').querySelector('.list-filters');
   if (filters) {
     picker.append(filters);
-    if (['q', 'status', 'response'].some(key => new URLSearchParams(location.search).get(key))) {
+    if (['q', 'status', 'response', 'outcome'].some(key => new URLSearchParams(location.search).get(key))) {
       summary.classList.add('filters-active');
     }
   }

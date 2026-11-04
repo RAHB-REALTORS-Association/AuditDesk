@@ -370,7 +370,7 @@ def create_app(config=None, verifier=None):
             return web.render(config, "outcome", form_values=issues, error=str(error), audit_id=audit_id), 400
         if result == 'failed':
             return done('outcome', 'Failed audit recorded. Create an Asana task below to start follow-up; review the notice status for email delivery.', id=audit_id)
-        return done("audits", "Audit result recorded. Check notice status below.")
+        return done("outcome", "Audit marked passed. Completed audits remain available in Listing history.", id=audit_id)
 
     @app.post('/audits/refresh')
     @require('audits.refresh')

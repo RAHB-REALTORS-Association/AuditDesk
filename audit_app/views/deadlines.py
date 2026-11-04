@@ -9,7 +9,7 @@ from .common import badge, esc, local_time, retry_token
 def deadline_view(config, audit, now=None, next_send=None):
     now = now or datetime.now(timezone.utc)
     if audit['outcome']:
-        return badge('completed') + (f'<small>Response received {esc(local_time(audit["response_received_at"], config.timezone))}</small>' if audit['response_received_at'] else '')
+        return badge('reviewed' if audit['outcome'] == 'failed' else 'completed') + (f'<small>Response received {esc(local_time(audit["response_received_at"], config.timezone))}</small>' if audit['response_received_at'] else '')
     if audit['response_received_at']:
         due = audit['response_due_at'] or (datetime.fromisoformat(audit['email_sent_at'].replace('Z', '+00:00')) + timedelta(hours=24)).isoformat()
         late = datetime.fromisoformat(audit['response_received_at'].replace('Z', '+00:00')) > datetime.fromisoformat(due.replace('Z', '+00:00'))
