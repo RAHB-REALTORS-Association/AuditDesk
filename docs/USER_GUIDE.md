@@ -16,7 +16,7 @@ IT can use **Delete person** in **Manage → Access** to remove an account and r
 
 ## Refresh corrected listing data
 
-After an upstream data issue has been corrected, open **Audit history**, select up to 20 affected audits, and choose **Refresh selected from MLS**. AuditDesk fetches each listing by its MLS listing key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.
+After an upstream data issue has been corrected, open **Audit queue**, select up to 20 affected audits, and choose **Refresh selected from MLS**. AuditDesk fetches each listing by its MLS listing key, refreshes office, agent, and broker contacts, and rebuilds the recipients. The listing's age does not restrict this lookup.
 
 Only pending or explicitly failed original requests without an audit result are refreshed. Sent, sending, uncertain-delivery, and completed audits are skipped. Refresh preserves selections, assignments, and email-attempt history and sends no email. Review the recipients and delivery detail, then use **Retry email** when ready. Missing or invalid contacts remain flagged; listings that no longer meet the Cornerstone/member rules cannot be sent. Test mode still redirects delivery to the configured administrator.
 
@@ -27,6 +27,8 @@ MLS API errors or conflicting record changes reject the refresh without saving a
 A PR preview opens without login as Demo Developer. The DEVELOPMENT SANDBOX banner identifies synthetic data. Delivery records are simulated and no email can be sent, including failed-audit notices or retries. Edits, assignments and results are available for UI testing and reset on restart. Real keys and enable flags cannot activate integrations.
 
 ## Everyday audit work
+
+**Audit queue** contains audits awaiting review and failed audits requiring follow-up. A pass, including after remediation, removes the audit from this queue without deleting any records. **Listing history** retains every considered Cornerstone member listing, including those not selected for audit. Use its **Audit outcome** filter to find passed, failed, pending or unselected listings, and choose **View audit** for the full result and preserved failure history. Reports continue to include all saved audits.
 
 ### Office calendar and queued requests
 
@@ -48,13 +50,13 @@ The enabled scheduler checks the pending queue every five minutes, even after th
 
 ### Broker response timers
 
-**Broker response** in Audit history shows time remaining, an amber warning in the final four hours, or how long a request is overdue, alongside its exact local due time. The clock starts when SendGrid accepts the original request, using provider acceptance rather than confirmation that the member read it. Queued/failed requests have no running timer; uncertain delivery is explicitly identified. Existing sent requests use their recorded send time plus 24 hours.
+**Broker response** in Audit queue shows time remaining, an amber warning in the final four hours, or how long a request is overdue, alongside its exact local due time. The clock starts when SendGrid accepts the original request, using provider acceptance rather than confirmation that the member read it. Queued/failed requests have no running timer; uncertain delivery is explicitly identified. Existing sent requests use their recorded send time plus 24 hours.
 
 Use **Filters & columns → Broker response** to find overdue requests, requests awaiting a response, or responses awaiting review. **Overdue responses** counts unfinished, sent requests with no recorded response whose deadline has passed. Visible clocks update each minute; reload to refresh counts, filters, and changes made by other staff.
 
 Reviewers can select **Response received** on a row to record receipt now. To enter an earlier actual receipt time, open **Record result** and use the optional office-time field in the Broker response section. Receipt stops the response clock while audit review remains open. It shows whether receipt was within 24 hours or after the deadline. **Reopen response timer** clears an incorrect receipt without changing the original deadline. Activity history records these changes. Recording a result also removes an audit from the open-response queue; it does not invent a receipt timestamp.
 
-1. Review Audit history. Selected listings, recipients (To and CC), delivery state, reviewer, and outcome are shown together. Failed-audit comments show a short excerpt; choose **View details** to read the full comment on the result page.
+1. Review Audit queue. Selected listings, recipients (To and CC), delivery state, reviewer, and outcome are shown together. Failed-audit comments show a short excerpt; choose **View details** to read the full comment on the result page.
 2. Choose **Assign to me** in the **Assigned to** column to claim an unassigned unfinished audit, or have a manager assign a reviewer. Unassigned unfinished audits are Not started; assigned unfinished audits are In progress. If an assigned account becomes inactive or loses auditing permission, unfinished work shows Needs reassignment.
 3. Once the original request is accepted by SendGrid, choose Record result. A pass records the result without another email. For a failure, describe the issues, preview the notice, then record and send. Each audit receives one result.
 4. Retry an explicitly failed email from the queue. An unknown delivery means SendGrid may have accepted it: contact IT to inspect provider delivery records before any intervention.
@@ -65,7 +67,7 @@ Test mode redirects all messages to the configured administrator, and the banner
 
 ## Choose visible columns
 
-Use the **Columns** button at the right of a list header to show or hide columns. Its chooser floats over the list; click outside it or press Escape to close it. Audit history, listings, scheduled runs, daily reports, brokerage statistics, and the activity log each remember their own choices in your browser. The identifying column, audit selection checkboxes, and audit actions stay visible. **Show all columns** restores the default view. Press Escape to close the control.
+Use the **Columns** button at the right of a list header to show or hide columns. Its chooser floats over the list; click outside it or press Escape to close it. Audit queue, listings, scheduled runs, daily reports, brokerage statistics, and the activity log each remember their own choices in your browser. The identifying column, audit selection checkboxes, and audit actions stay visible. **Show all columns** restores the default view. Press Escape to close the control.
 
 Hiding columns changes the screen only. Sorting, bulk selection, branch expansion, and CSV/PDF exports still use the underlying records. If browser storage is unavailable, your choices apply until the page is refreshed.
 
@@ -99,20 +101,20 @@ Available merge tags are `{{mls_number}}`, `{{address}}`, `{{agent_name}}`, `{{b
 
 ## Record an audit result
 
-After the original request email is accepted, open **Record result** on its Audit history row. **Mark passed** records a pass without sending another email. For a failed audit, enter the issues, select **Preview failed notice** to review the rendered message and recipients, then select **Record fail and send notice**. The issues are saved with the audit and included through the `{{issues}}` merge tag. Each audit can receive one result, preventing duplicate failed-audit notices from repeated submissions.
+After the original request email is accepted, open **Record result** on its Audit queue row. **Mark passed** records a pass without sending another email. For a failed audit, enter the issues, select **Preview failed notice** to review the rendered message and recipients, then select **Record fail and send notice**. The issues are saved with the audit and included through the `{{issues}}` merge tag. Each audit can receive one result, preventing duplicate failed-audit notices from repeated submissions.
 
-Edit the follow-up wording under **Manage → Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit history without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
+Edit the follow-up wording under **Manage → Failed-audit email**. Its subject and body support the same bold, italic, and underline controls and merge tags as the original request, plus `{{issues}}`. The failure body must include `{{mls_number}}`, `{{address}}`, and `{{issues}}`. A failed SendGrid attempt can be retried from Audit queue without recording another result; uncertain sends are not automatically retried. In test mode, the notice goes only to `ADMIN_EMAIL` and obeys the test-window cutoff. A test audit cannot later send a production failure notice to a broker.
 
 
 ## Track who is working on an audit
 
-Any active reviewer, Audit manager or IT administrator can use **Assign to me** in **Audit history** for an unassigned, unfinished audit. The server uses the signed-in account; reviewers cannot choose another person, take over assigned work or clear assignments. The button disappears after assignment. If someone claims or changes the audit while the page is open, refresh before retrying. Completed audits cannot be claimed. Claiming an audit records the actor in activity history and does not send mail, change response receipt/deadlines or record a result.
+Any active reviewer, Audit manager or IT administrator can use **Assign to me** in **Audit queue** for an unassigned, unfinished audit. The server uses the signed-in account; reviewers cannot choose another person, take over assigned work or clear assignments. The button disappears after assignment. If someone claims or changes the audit while the page is open, refresh before retrying. Completed audits cannot be claimed. Claiming an audit records the actor in activity history and does not send mail, change response receipt/deadlines or record a result.
 
 IT manages accounts and roles under **Manage → Access**. Only active accounts whose role permits auditing appear in assignment dropdowns. There is no separate audit-team list. Audit managers and IT administrators can choose an account in the **Assigned to** dropdown and save to assign or reassign work.
 
 For bulk assignment, select audit rows with their checkboxes, or use the heading checkbox to select all displayed audits (up to the latest 200). The toolbar shows the selection count. Choose an account under **Assign selected to**, then select **Apply to selected**. Choose **Unassigned — clear assignment** to remove assignments from the selected rows. **Clear selection** unchecks rows without changing their assignments. Selection survives table sorting, but resets after saving or refreshing.
 
-The **Work status** column shows **Not started** when no one is assigned, **In progress** when an eligible account is assigned, **Needs reassignment** when that account is unavailable, and **Completed** after a pass or fail result is recorded. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email or change results. Bulk changes save together: an invalid account, missing audit, or stale form rejects the whole batch. Each changed audit records the authenticated actor in the activity log.
+The **Work status** column shows **Not started** when no one is assigned, **In progress** when an eligible account is assigned, **Needs reassignment** when that account is unavailable, and **Follow-up required** after a failed result. Passed audits leave the queue and remain available in **Listing history**. Clearing an assignment returns an unfinished audit to **Not started**. Assignment changes do not send email or change results. Bulk changes save together: an invalid account, missing audit, or stale form rejects the whole batch. Each changed audit records the authenticated actor in the activity log.
 
 
 ## Change selection settings
@@ -131,7 +133,7 @@ Open **Management → Daily audit report** for the past 90 local calendar days. 
 
 Open **Management → Brokerage statistics** to compare brokerages for a rolling 3-month, 6-month, or 1-year period. Each row shows unique new Active listings first processed by the app, how many received an audit selection, the audited percentage, and passed and failed counts and rates. Pass and fail rates use completed audits only; pending audits are excluded, and a rate is unavailable until the brokerage has a completed audit. Branches with the same brokerage name (ignoring capitalization and extra spaces) are combined into one row, with their counts and rates calculated together. Select **View branches** to see each office's MLS profile address and its own counts and rates; brokerage rows remain grouped while sorting. Listings without a brokerage name retain their MLS office ID as a separate group. Manual test runs are included. Use **Export branded PDF** to download a management report for the selected period, including all branch addresses. Both views show when app history begins; an earlier portion of a selected period cannot be filled from missing intake history. PDF support is included in the locked runtime dependencies. If export is unavailable, ask IT to verify the deployed environment.
 
-Scheduled runs show **Completed with email errors** when intake succeeded but request delivery failed, including missing or invalid recipients. Check Audit history for the affected audit and its delivery detail. Older completed runs also surface unresolved email errors. **Completed with pending email** means the requests are waiting for delivery, such as when email is disabled; it does not mean mail was accepted.
+Scheduled runs show **Completed with email errors** when intake succeeded but request delivery failed, including missing or invalid recipients. Check Audit queue for the affected audit and its delivery detail. Older completed runs also surface unresolved email errors. **Completed with pending email** means the requests are waiting for delivery, such as when email is disabled; it does not mean mail was accepted.
 
 Use **Filters & columns** above a list to search records, combine status checkboxes, and hide optional columns. Filters remain in the URL; column choices stay in this browser. Use the controls below each table to choose 10, 25, 50, or 100 rows and move between pages. History search and sorting cover all matching records, including older records beyond the former recent-history limits. Brokerage pagination counts brokerage groups and keeps their branches together. List filters and pagination do not narrow exports: brokerage PDFs include the full selected period; activity CSV includes the most recent 10,000 events.
 
@@ -151,11 +153,11 @@ Selection settings use one form and **Save selection settings** button. Office c
 
 ## Failed-audit Asana follow-up
 
-Failed audits show a **Create Asana task** action directly in Audit history. It opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
+Failed audits show a **Create Asana task** action directly in Audit queue. It opens a prefilled draft with the MLS number, property, recorded issues, and an AuditDesk link. Review it in your own Asana account, choose the project and assignee, then create the task. The button never creates a task automatically.
 
 Use **Review or copy follow-up details → Copy follow-up details** if prefilling fails or the issues are long. Long drafts contain an abbreviated description and link to the full audit; the copy field always includes all recorded issues. If clipboard access is blocked, select and copy the text manually.
 
-Choose **Link task / copy details** in Audit history to open the follow-up page. Recording a failed result also takes you directly there. Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
+Choose **Link task / copy details** in Audit queue to open the follow-up page. Recording a failed result also takes you directly there. Paste the created task URL into **Asana task link** and save. This replaces the draft button with **Open Asana task** to help avoid duplicates. Clear the field and save to remove the association. Reviewers, managers, and administrators can save links; changes appear in activity history. Linking does not change the audit result, send mail, or track Asana completion.
 
 The handoff uses an undocumented Asana task-creation URL, verified by staff. No API credentials, OAuth application, project IDs, or Asana administration are required. Staff own the Asana project and follow-up workflow.
 
@@ -173,7 +175,7 @@ Open **Manage → Listing eligibility** to exclude membership classes or specifi
 
 An unverified membership class cannot be selected or sent. IT can verify historical classes without sending email. For an unsent audit, **Refresh selected from MLS** updates the listing and contacts; review it before explicitly retrying a failed email. Changes to eligibility do not automatically retry failed requests or reselect earlier listings. The initial intake window remains under **Manage → Selection**.
 
-Audit history uses compact action icons. Hover over a row or move keyboard focus into it to reveal available actions; each icon has a descriptive label and hover title. Touch devices show the controls continuously. Availability still depends on your role and the audit state.
+Audit queue uses compact action icons. Hover over a row or move keyboard focus into it to reveal available actions; each icon has a descriptive label and hover title. Touch devices show the controls continuously. Availability still depends on your role and the audit state.
 
 If the office has no usable Broker of Record contact, the app checks its active Broker of Record/Broker Manager roster and then its explicit head-office chain. The intended recipient shows the resolved contact; the listing keeps its original brokerage. Invalid, inactive or ambiguous contacts remain blocked. After upgrading, IT can run `backfill-broker-contacts` to repair eligible unsent requests in bulk. Staff can use **Refresh selected from MLS** for later upstream corrections and explicitly retry failed email after checking the intended recipients. Full NL7 membership labels are excluded automatically.
 

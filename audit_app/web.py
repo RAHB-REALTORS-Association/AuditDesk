@@ -43,6 +43,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         counts = {
             "processed": db.execute("SELECT count(*) FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)").fetchone()[0],
             "selected": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)").fetchone()[0],
+            "open": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND COALESCE(a.outcome,'')<>'passed'").fetchone()[0],
             "sent": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND email_status='email_sent'").fetchone()[0],
             "failed": db.execute("SELECT count(*) FROM audits a JOIN listings l ON l.id=a.listing_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND email_status IN ('email_failed','email_unknown')").fetchone()[0],
         }
@@ -57,9 +58,9 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             source = """SELECT a.*, l.mls_number, l.address, l.agent_email,
                 COALESCE(NULLIF(ar.display_name,''),ar.email) AS reviewer_name, ar.active AS active, ar.role AS role,
                 (SELECT count(*) FROM audits prior JOIN listings pl ON pl.id=prior.listing_id WHERE listing_allowed(pl.originating_system_name,pl.agent_mls_id,pl.agent_membership_class) AND prior.brokerage_id=a.brokerage_id AND prior.selected_at<a.selected_at) AS prior_count,
-                CASE WHEN a.outcome IS NOT NULL THEN 'completed' WHEN ar.active=1 THEN 'in_progress'
+                CASE WHEN a.outcome='failed' THEN 'follow_up_required' WHEN a.outcome IS NOT NULL THEN 'completed' WHEN ar.active=1 THEN 'in_progress'
                   WHEN a.assignee_user_id IS NOT NULL THEN 'needs_reassignment' ELSE 'not_started' END AS work_status
-                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)"""
+                FROM audits a JOIN listings l ON l.id=a.listing_id LEFT JOIN app_users ar ON ar.id=a.assignee_user_id WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class) AND COALESCE(a.outcome,'')<>'passed'"""
             source = f"""SELECT *, CASE WHEN outcome IS NOT NULL THEN 'completed'
                 WHEN response_received_at IS NOT NULL THEN 'received'
                 WHEN email_status='email_unknown' THEN 'unknown'
@@ -73,10 +74,14 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 'Agent':'agent_name','Recipient':'intended_to',
                 'Status':'email_status','Assigned to':'reviewer_name','Outcome':'outcome','Work status':'work_status','History':'prior_count','Broker response':'deadline_sort'}, 'selected_at')
         elif tab == "listings":
-            listings, list_page = query_page(db, tab, "SELECT * FROM listings WHERE listing_allowed(originating_system_name,agent_mls_id,agent_membership_class)",
-                ('mls_number','address','brokerage_name','agent_name'), 'processing_status',
+            source = """SELECT l.*,a.id AS audit_id,a.outcome,a.issues,
+                CASE WHEN a.id IS NULL THEN 'not_selected' WHEN a.outcome IS NULL THEN 'pending' ELSE a.outcome END AS audit_outcome
+                FROM listings l LEFT JOIN audits a ON a.listing_id=l.id
+                WHERE listing_allowed(l.originating_system_name,l.agent_mls_id,l.agent_membership_class)"""
+            listings, list_page = query_page(db, tab, source,
+                ('mls_number','address','brokerage_name','agent_name','audit_outcome'), 'processing_status',
                 {'MLS / Property':'mls_number','Entered':'entry_timestamp','Brokerage':'brokerage_name',
-                 'Listing agent':'agent_name','Processing status':'processing_status'}, 'first_processed_at')
+                 'Listing agent':'agent_name','Processing status':'processing_status','Audit outcome':'audit_outcome'}, 'first_processed_at')
         elif tab == "runs":
             source = """SELECT r.*,
                 (SELECT count(*) FROM audits a WHERE a.selected_at=r.started_at
@@ -91,7 +96,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
                 {'Started':'started_at','Status':'display_status','Fetched':'fetched_count','New':'new_count',
                  'Selected':'selected_count','Error':'error'}, 'started_at')
 
-    nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users", "recovery", "calendar", "eligibility"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit history"), ("listings", "Listings considered"), ("runs", "Scheduled runs")))
+    nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users", "recovery", "calendar", "eligibility"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("audits", "Audit queue"), ("listings", "Listing history"), ("runs", "Scheduled runs")))
     admin_nav = "".join(f'<a class="nav-item {"active" if tab == name or name == "manage" and tab in {"admin", "template", "failure_template", "users", "recovery", "calendar", "eligibility"} else ""}" href="/?tab={name}">{label}</a>' for name, label in (("report", "Daily audit report"), ("brokerages", "Brokerage statistics"), ("manage", "Manage"), ("activity", "Activity log")) if allowed(TAB_CAPABILITIES.get(name, "audits.read")))
     if config.test_mode:
         detail = "All outgoing messages are redirected exclusively to the administrator."
@@ -106,7 +111,7 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         banner = '<div class="test-banner"><strong>EMAIL DISABLED</strong><span>No messages will be sent. Audits and results remain available for review.</span></div>'
     if config.env == "development":
         banner = '<div class="test-banner"><strong>DEVELOPMENT SANDBOX</strong><span>Synthetic listings only. Email records are simulated; no messages can be sent. Changes reset on restart.</span></div>'
-    cards = "".join(f'<div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{counts[key]}</div></div>' for key, label in (("processed", "Listings considered"), ("selected", "Selected audits"), ("sent", "Emails accepted"), ("failed", "Email issues"), ("overdue", "Overdue responses")))
+    cards = "".join(f'<div class="stat"><div class="stat-label">{label}</div><div class="stat-value">{counts[key]}</div></div>' for key, label in (("processed", "Listings considered"), ("open", "Open audits") if tab == "audits" else ("selected", "Selected audits"), ("sent", "Emails accepted"), ("failed", "Email issues"), ("overdue", "Overdue responses")))
     if tab == "eligibility":
         title, subtitle = "Manage", "Listing eligibility, exclusions and query scope."
         content = eligibility_view(config, form_values, error, eligibility_preview)
@@ -142,15 +147,21 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
         content = brokerage_view(config, period)
     elif tab == "listings":
         headings = "".join((sort_heading("MLS / Property"), sort_heading("Entered", "date"), sort_heading("Brokerage"),
-                            sort_heading("Listing agent"), sort_heading("Processing status")))
-        rows = "".join(f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["entry_timestamp"])}">{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td></tr>' for r in listings)
-        title, subtitle = "Listings considered", "Cornerstone member listings only · New active listings evaluated by the daily job."
+                            sort_heading("Listing agent"), sort_heading("Processing status"), sort_heading("Audit outcome"), "<th>Actions</th>"))
+        rows = ""
+        for r in listings:
+            outcome = badge(r["audit_outcome"])
+            if r["outcome"] == "passed" and r["issues"]:
+                outcome += '<small>Remediated</small>'
+            detail = f'<a href="/?tab=outcome&amp;id={r["audit_id"]}">View audit</a>' if r["audit_id"] is not None and allowed("audits.result") else "—"
+            rows += f'<tr><td data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td data-sort="{esc(r["entry_timestamp"])}">{esc(local_time(r["entry_timestamp"], config.timezone))}</td><td>{esc(r["brokerage_name"])}</td><td>{esc(r["agent_name"])}</td><td>{badge(r["processing_status"])}</td><td>{outcome}</td><td>{detail}</td></tr>'
+        title, subtitle = "Listing history", "Every Cornerstone member listing considered, with selection status and audit results."
     elif tab == "runs":
         headings = "".join(sort_heading(label, "number" if label in {"Fetched", "New", "Selected"} else "text") for label in ("Started", "Status", "Fetched", "New", "Selected", "Error"))
         rows = ""
         for r in runs:
             status = r["display_status"]
-            detail = r["error"] or (f'{r["email_issues"]} email(s) need attention; see audit history' if r["email_issues"] else
+            detail = r["error"] or (f'{r["email_issues"]} email(s) need attention; see audit queue' if r["email_issues"] else
                                     f'{r["email_pending"]} email(s) queued; waiting for a request window or email enablement' if r["email_pending"] else "")
             if status == "completed" and r["email_pending"]:
                 status = "completed_with_pending_email"
@@ -191,8 +202,8 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             mode = '<span class="mode-test">TEST</span>' if r["test_mode"] else ''
             test_delivery = f'<small>Test delivery: {esc(recipients(r["actual_recipients"]))}</small>' if r["test_mode"] else ""
             eligible = can_audit(r)
-            work_status = ("Completed" if r["outcome"] else "In progress" if eligible
-                           else "Needs reassignment" if r["assignee_user_id"] else "Not started")
+            work_status = ("follow_up_required" if r["outcome"] == "failed" else "completed" if r["outcome"] else "in_progress" if eligible
+                           else "needs_reassignment" if r["assignee_user_id"] else "not_started")
             options = '<option value="">Unassigned</option>' + "".join(
                 f'<option value="{person["id"]}" {"selected" if person["id"] == r["assignee_user_id"] else ""}>{esc(person["display_name"] or person["email"])}{(" · " + esc(person["email"])) if person["display_name"] else ""}</option>'
                 for person in reviewers)
@@ -207,10 +218,10 @@ def render(config, tab="audits", notice="", form_values=None, error="", audit_id
             reviewer_label = r["reviewer_name"] or ""
             selection = f'<td class="audit-select"><input type="checkbox" name="audit_ids" value="{r["id"]}" form="bulk-assignment" aria-label="Select MLS {esc(r["mls_number"])}"></td>' if selectable else ""
             rows += f'<tr>{selection}<td class="history-property" data-sort="{esc(r["mls_number"])}"><strong>{esc(r["mls_number"])}</strong><small>{esc(r["address"])}</small></td><td class="history-response">{response}</td><td data-sort="{esc(r["selected_at"])}">{esc(local_time(r["selected_at"], config.timezone))}</td><td data-sort="{esc(r["brokerage_name"])}">{esc(r["brokerage_name"])}<small>{esc(r["broker_name"])}</small></td><td data-sort="{esc(r["agent_name"])}">{esc(r["agent_name"])}<small>{esc(r["agent_email"])}</small></td><td class="history-recipient"><span class="muted">To:</span> {esc(recipients(r["intended_to"]))}<small>CC: {esc(recipients(r["intended_cc"]))}</small>{test_delivery}</td><td data-sort="{esc(r["email_status"])}">{mode} {badge(r["email_status"])}<small class="error">{esc(r["last_error"]) if r["last_error"] else ""}</small></td><td>{badge(work_status.lower().replace(" ", "_"))}</td><td data-sort="{esc(reviewer_label or "Unassigned")}">{assignment}<small>{esc(reviewer_label) if reviewer_label else ""}</small></td><td data-sort="{r["prior_count"]}">{r["prior_count"]} prior</td><td>{outcome}</td><td class="history-actions"><div class="row-actions">{retry}</div></td></tr>'
-        title, subtitle = "Audit history", "Cornerstone member listings only · Selection, recipient routing, and email delivery."
+        title, subtitle = "Audit queue", "Audits awaiting review and failed audits requiring follow-up. Passed audits are available in Listing history."
     if tab not in {"template", "failure_template", "outcome", "admin", "manage", "report", "brokerages", "users", "activity", "recovery", "calendar", "eligibility"}:
         if not rows:
-            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") or allowed("audits.refresh") else 12) if tab == "audits" else 6 if tab == "runs" else 5}" class="empty">No records match these filters.</td></tr>'
+            rows = f'<tr><td colspan="{(13 if allowed("audits.assign") or allowed("audits.refresh") else 12) if tab == "audits" else 6 if tab == "runs" else 7}" class="empty">No records match these filters.</td></tr>'
         bulk = ""
         if tab == "audits" and (allowed("audits.assign") or allowed("audits.refresh")) and audits:
             bulk_options = '<option value="" disabled selected>Choose an assignment</option><option value="unassigned">Unassigned — clear assignment</option>' + "".join(

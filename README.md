@@ -39,7 +39,7 @@ The daily job draws a selection target from new listings, applies cooldowns, and
 | Audit manager | Reviewer work plus individual/bulk assignments, selection settings, and email templates |
 | IT administrator | Manager work plus application access and activity export |
 
-Active accounts whose role permits auditing appear in assignment dropdowns. IT manages those accounts under **Access management**; managers assign audits individually or in bulk from **Audit history**. See the [staff guide](docs/USER_GUIDE.md) for everyday workflows.
+Active accounts whose role permits auditing appear in assignment dropdowns. IT manages those accounts under **Access management**; managers assign audits individually or in bulk from **Audit queue**. See the [staff guide](docs/USER_GUIDE.md) for everyday workflows.
 
 ## Requirements
 

@@ -35,7 +35,7 @@ def assign_self(config, audit_id, principal):
         changed = db.execute('''UPDATE audits SET assignee_user_id=?
             WHERE id=? AND assignee_user_id IS NULL AND outcome IS NULL''', (user['id'], audit_id))
         if changed.rowcount != 1:
-            raise Conflict('This audit is already assigned or completed. Refresh the audit history.')
+            raise Conflict('This audit is already assigned or completed. Refresh the audit queue.')
         event(db, 'audit.assigned', audit_id, str(user['id']))
         db.commit()
 

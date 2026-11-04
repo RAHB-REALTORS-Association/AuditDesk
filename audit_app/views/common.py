@@ -23,8 +23,8 @@ def local_time(value, zone):
 
 
 def badge(status):
-    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress", "response_received"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment", "run_had_errors"} else "neutral"
-    label = status.replace("_", " ").title()
+    kind = "good" if status in {"email_sent", "completed", "passed", "in_progress", "response_received"} else "bad" if status in {"email_failed", "email_unknown", "email_blocked", "failed", "completed_with_email_errors", "needs_reassignment", "run_had_errors"} else "warning" if status == "follow_up_required" else "neutral"
+    label = "Follow-up required" if status == "follow_up_required" else status.replace("_", " ").title()
     return f'<span class="badge {kind}">{esc(label)}</span>'
 
 

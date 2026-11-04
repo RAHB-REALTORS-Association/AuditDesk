@@ -368,6 +368,8 @@ class FoundationTests(unittest.TestCase):
         self.assertEqual(self.post('/assignment/1',{'assignee_user_id':'2'},role='manager').status_code,303)
         response=self.post('/outcome/1',{'outcome':'passed','action':'record'},role='reviewer')
         self.assertEqual(response.status_code,303,response.text)
+        self.assertIn('tab=outcome', response.headers['Location'])
+        self.assertIn('Back to listing history', self.get('/?tab=outcome&id=1', role='reviewer').text)
         with connect(self.config.database_path) as db:
             self.assertEqual(db.execute("SELECT actor FROM activity_events WHERE action='audit.result'").fetchone()[0],'reviewer')
 
@@ -407,6 +409,76 @@ class FoundationTests(unittest.TestCase):
         self.assertIn('Remediated and passed', result)
         self.assertIn('Missing document &lt;check&gt; &amp; details', result)
         self.assertEqual(self.post(endpoint, {}, role='reviewer', page=page).status_code, 400)
+
+    def test_queue_excludes_passed_before_search_filters_and_pagination(self):
+        with connect(self.config.database_path) as db:
+            for number in range(1, 46):
+                db.execute("""INSERT INTO listings(id,bridge_listing_id,mls_number,status,entry_timestamp,address,
+                    first_processed_at,processing_status,originating_system_name,agent_mls_id,agent_membership_class)
+                    VALUES(?,?,?,'Active','2026-10-01T12:00:00+00:00','Synthetic queue fixture',
+                    '2026-10-01T12:00:00+00:00','email_sent','Cornerstone','DEMO-MEMBER','MEMBER')""",
+                    (number, str(number), f'QUEUE-{number:02}'))
+                db.execute("""INSERT INTO audits(id,listing_id,selected_at,intended_to,intended_cc,actual_recipients,
+                    test_mode,email_status,selection_metadata,outcome,issues)
+                    VALUES(?,?,'2026-10-01T12:00:00+00:00','[]','[]','[]',1,'email_sent','{}',?,?)""",
+                    (number, number, 'passed' if number <= 30 else 'failed' if number == 31 else None,
+                     'Corrected synthetic issue' if number == 1 else 'Missing synthetic form' if number == 31 else None))
+            db.commit()
+        page = self.get('/?tab=audits&per_page=10&page=2', role='reviewer').text
+        self.assertIn('<h1>Audit queue</h1>', page)
+        self.assertIn('11–15 of 15 records', page)
+        body = re.search(r'<tbody>(.*?)</tbody>', page, re.S)[1]
+        self.assertEqual(body.count('<tr>'), 5)
+        self.assertNotRegex(body, r'<strong>QUEUE-(?:0[1-9]|[12][0-9]|30)</strong>')
+        filtered = self.get('/?tab=audits&q=QUEUE-01&status=email_sent', role='reviewer').text
+        self.assertIn('0–0 of 0 records', filtered)
+        failed = self.get('/?tab=audits&response=completed', role='reviewer').text
+        self.assertIn('<strong>QUEUE-31</strong>', failed)
+        self.assertIn('Follow-up required', failed)
+        self.assertIn('Reviewed', failed)
+        self.assertIn('1–1 of 1 records', failed)
+        self.assertNotIn('<strong>QUEUE-01</strong>', failed)
+
+    def test_listing_history_keeps_passed_remediated_pending_and_unselected_listings(self):
+        from audit_app.outcomes import remediate_audit
+        from audit_app.brokerage_report import brokerage_statistics
+        self.seed_asana_audits()
+        with connect(self.config.database_path) as db:
+            db.execute("UPDATE listings SET agent_membership_class='MEMBER'")
+            db.execute("UPDATE audits SET issues=NULL WHERE id=2")
+            db.execute("""INSERT INTO listings(id,bridge_listing_id,mls_number,status,entry_timestamp,address,
+                first_processed_at,processing_status,originating_system_name,agent_mls_id,agent_membership_class)
+                VALUES(4,'4','NOT-SELECTED','Active','2026-10-01T12:00:00+00:00','Synthetic unselected listing',
+                '2026-10-01T12:00:00+00:00','processed_not_selected','Cornerstone','DEMO-MEMBER','MEMBER')""")
+            db.commit()
+        before_report = brokerage_statistics(self.config, today=datetime(2026, 10, 2).date())
+        failed_history = self.get('/?tab=listings&outcome=failed', role='reviewer').text
+        self.assertIn('1–1 of 1 records', failed_history)
+        self.assertIn('/?tab=outcome&amp;id=1', failed_history)
+        remediate_audit(self.config, 1)
+        history = self.get('/?tab=listings&outcome=passed&per_page=10&page=8&sort=Audit+outcome', role='reviewer').text
+        self.assertIn('<h1>Listing history</h1>', history)
+        self.assertIn('1–2 of 2 records', history)
+        self.assertIn('Remediated', history)
+        self.assertIn('name="outcome" value="passed"', history)
+        self.assertIn('/?tab=outcome&amp;id=1', history)
+        self.assertIn('/?tab=outcome&amp;id=2', history)
+        self.assertNotIn('NOT-SELECTED', history)
+        queue = self.get('/?tab=audits', role='reviewer').text
+        self.assertNotIn('/?tab=outcome&amp;id=1', queue)
+        self.assertNotIn('/?tab=outcome&amp;id=2', queue)
+        self.assertIn('1–1 of 1 records', queue)
+        for outcome in ('pending', 'not_selected'):
+            self.assertIn('1–1 of 1 records', self.get(f'/?tab=listings&outcome={outcome}').text)
+        self.assertIn('1–2 of 2 records', self.get('/?tab=listings&q=passed').text)
+        self.assertEqual(self.get('/?tab=listings&outcome=invalid').status_code, 400)
+        self.assertIn('Original failure issues', self.get('/?tab=outcome&id=1', role='reviewer').text)
+        after_report = brokerage_statistics(self.config, today=datetime(2026, 10, 2).date())
+        self.assertEqual((before_report['total'], before_report['audited']), (4, 3))
+        self.assertEqual((after_report['total'], after_report['audited'], after_report['passed'], after_report['failed']), (4, 3, 2, 0))
+        with connect(self.config.database_path) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM listings').fetchone()[0], 4)
+            self.assertEqual(db.execute('SELECT count(*) FROM audits').fetchone()[0], 3)
 
     def test_email_disable_blocks_sender_and_failed_run_can_retry(self):
         sender=Mock()

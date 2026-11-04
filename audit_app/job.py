@@ -299,7 +299,7 @@ def run_job(config, client=None, rng=random, now=None, sender=None, only_if_need
             if failed_deliveries:
                 with connect(config.database_path) as db:
                     db.execute("UPDATE runs SET status='completed_with_email_errors', error=? WHERE id=?",
-                               (f"{failed_deliveries} email(s) were not accepted; see audit history", run_id))
+                               (f"{failed_deliveries} email(s) were not accepted; see audit queue", run_id))
                     db.commit()
             LOG.info("run_completed", extra={"run_id": run_id, "fetched": len(fetched), "new": len(fresh), "selected": len(selected)})
             return {"fetched": len(fetched), "new": len(fresh), "selected": len(selected)}

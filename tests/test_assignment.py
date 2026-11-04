@@ -61,7 +61,8 @@ class AssignmentTests(unittest.TestCase):
         with connect(self.config.database_path) as db:
             db.execute("UPDATE audits SET outcome='passed' WHERE id=1")
             db.commit()
-        self.assertIn('Completed', render(self.config))
+        self.assertNotIn('<strong>DEMO-1</strong>', render(self.config))
+        self.assertIn('Passed', render(self.config, 'listings'))
 
     def test_role_capability_is_checked_when_assigning(self):
         user_id = self.person()
