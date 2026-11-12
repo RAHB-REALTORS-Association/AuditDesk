@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="AuditDesk" org.opencontainers.image.version=$VERSION
 LABEL org.opencontainers.image.licenses="MIT"
