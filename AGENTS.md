@@ -17,7 +17,7 @@
 ## Local verification
 
 - Before Python commands or dependency installation, check this repository and nearby task directories for `.venv`, `venv`, or a documented environment. Reuse it when present. Report the interpreter when artifact hashes or versions matter.
-- Python 3.14 is the CI/container runtime. Install reproducible dependencies with the chosen interpreter's `-m pip install -r requirements.lock`.
+- Python 3.15 is the CI/container runtime. Install reproducible dependencies with the chosen interpreter's `-m pip install -r requirements.lock`.
 - Run `python -m unittest discover -s tests` from the root with the project environment activated.
 - Use `python main.py simulate` for isolated workflow verification. Tests use temporary databases and mocked integrations; do not run live intake or send mail merely to verify a code change.
 - Container verification: `docker build -t auditdesk:local .`, then `python scripts/container_smoke.py auditdesk:local`.

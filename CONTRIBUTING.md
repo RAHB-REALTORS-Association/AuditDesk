@@ -4,7 +4,7 @@ Preserve the RESO Web API intake, fair selection, cooldowns, delivery protection
 
 ## Local setup
 
-Use Python 3.14. Check this repository and nearby task directories for `.venv`, `venv`, or a documented environment before creating one or installing dependencies. Reuse the existing interpreter when available.
+Use Python 3.15. Check this repository and nearby task directories for `.venv`, `venv`, or a documented environment before creating one or installing dependencies. Reuse the existing interpreter when available.
 
 For a new environment, run from the repository root:
 

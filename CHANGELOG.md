@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-16 — Python runtime update
+
+- Upgrade the container runtime to Python 3.15 and run verification and release checks with the same Python version.
+
 ## Unreleased — audit queue and listing history
 
 - Rename Audit history to Audit queue and exclude passed audits, including remediated passes, before search, filtering and pagination. Failed audits remain open with Follow-up required work status; their initial broker response is labelled Reviewed.

@@ -43,7 +43,7 @@ Active accounts whose role permits auditing appear in assignment dropdowns. IT m
 
 ## Requirements
 
-- Python 3.14 for local development, or Docker for the deployment runtime
+- Python 3.15 for local development, or Docker for the deployment runtime
 - MLS Web API and SendGrid credentials for live intake and delivery
 - Cloudflare Access and an HTTPS origin for test/production
 - One application instance and a persistent `/app/data` mount for test/production
