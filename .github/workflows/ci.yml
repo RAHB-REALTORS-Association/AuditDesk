@@ -14,7 +14,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
       - run: python -m pip install -r requirements.lock
       - run: python -m unittest discover -s tests
       - run: docker build -t auditdesk:ci .
@@ -25,6 +25,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
       - run: python -m pip install pip-audit
       - run: python -m pip_audit -r requirements.lock
