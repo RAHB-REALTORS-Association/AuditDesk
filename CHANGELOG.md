@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-23 — Gunicorn runtime update
+
+- Upgrade the installed Gunicorn runtime to 27.0.1 and align the permitted range with version 27. Preserve the single-worker, four-thread deployment configuration.
+
 ## 2026-11-16 — Python runtime update
 
 - Upgrade the container runtime to Python 3.15 and run verification and release checks with the same Python version.
